@@ -178,7 +178,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Create and switch to new branch
+          # Fetch latest refs to check remote state
+          git fetch origin
+
+          # Delete remote branch if it already exists
+          git push origin --delete "$BRANCH_NAME" 2>/dev/null || echo "Branch doesn't exist remotely yet"
+
+          # Create and switch to new branch from the current commit
           git checkout -b "$BRANCH_NAME"
 
           # Copy normalized screenshot to reference location (metadata already stripped)
@@ -198,8 +204,8 @@ jobs:
           Workflow: ${{ github.workflow }}
           Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          # Push the branch
-          git push -u origin "$BRANCH_NAME"
+          # Push the branch (force push in case of conflicts)
+          git push -u origin "$BRANCH_NAME" --force
 
           # Create PR using GitHub CLI
           gh pr create \
