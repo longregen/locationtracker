@@ -59,14 +59,12 @@ jobs:
           find app/build/outputs/apk/release -name "*.apk" -exec ls -lh {} \;
 
       - name: Decode and setup keystore
-        if: steps.version.outputs.is_tag == 'true'
         run: |
           echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
 
       - name: Sign release APKs
-        if: steps.version.outputs.is_tag == 'true'
         run: |
           cd app/build/outputs/apk/release
           for apk in *.apk; do
