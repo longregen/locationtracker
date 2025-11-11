@@ -1,27 +1,17 @@
-name: Android E2E Test
+name: CI - Build and Test
 
 on:
-  # Run after Build APK workflow completes successfully on main branch
-  workflow_run:
-    workflows: ["Build APK"]
-    types:
-      - completed
-  # Also allow manual trigger
-  workflow_dispatch:
-  # For pull requests, run alongside Build APK workflow
+  push:
+    branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  e2e-test:
-    name: Android Emulator E2E Test
+  build-and-test:
+    name: Build Debug APK and Run E2E Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # Only run if:
-    # - Manual trigger (workflow_dispatch) OR
-    # - Pull request OR
-    # - Triggered by successful Build APK workflow completion
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
+    timeout-minutes: 45
 
     strategy:
       matrix:
@@ -40,30 +30,31 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+          gradle-home-cache-cleanup: true
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
       - name: Build debug APK and test APK
         run: |
-          # Retry logic for network timeouts
-          max_attempts=3
-          attempt=1
-          while [ $attempt -le $max_attempts ]; do
-            echo "Build attempt $attempt of $max_attempts"
-            if ./gradlew assembleDebug assembleDebugAndroidTest --no-daemon --stacktrace; then
-              echo "Build succeeded on attempt $attempt"
-              exit 0
-            else
-              if [ $attempt -lt $max_attempts ]; then
-                echo "Build failed, waiting 30 seconds before retry..."
-                sleep 30
-              else
-                echo "Build failed after $max_attempts attempts"
-                exit 1
-              fi
-            fi
-            attempt=$((attempt + 1))
-          done
+          ./gradlew assembleDebug assembleDebugAndroidTest \
+            --parallel \
+            --build-cache \
+            --configuration-cache \
+            --no-daemon \
+            --stacktrace
+
+      - name: Upload debug APK artifacts
+        if: matrix.api-level == 30  # Only upload once to avoid duplicates
+        uses: actions/upload-artifact@v5
+        with:
+          name: debug-apks
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 30
 
       - name: Enable KVM group perms
         run: |
@@ -145,7 +136,7 @@ jobs:
             ls -la screenshots/Pictures/ || echo "No screenshots directory"
             echo "=== E2E Test Script Completed ==="
 
-      - name: Upload screenshots
+      - name: Upload E2E test screenshots
         if: always()
         uses: actions/upload-artifact@v5
         with:
@@ -153,11 +144,11 @@ jobs:
           path: screenshots/
           retention-days: 30
 
-      - name: Upload test results
+      - name: Upload E2E test results
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: test-results-api${{ matrix.api-level }}
+          name: e2e-test-results-api${{ matrix.api-level }}
           path: |
             test-results/
             app/build/reports/androidTests/
