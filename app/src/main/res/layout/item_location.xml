@@ -29,6 +29,16 @@
                 android:orientation="vertical">
 
                 <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/tvLocationName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="?attr/textAppearanceTitleMedium"
+                    android:textStyle="bold"
+                    android:visibility="gone"
+                    tools:text="Home"
+                    tools:visibility="visible" />
+
+                <com.google.android.material.textview.MaterialTextView
                     android:id="@+id/tvCoordinates"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"

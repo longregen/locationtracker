@@ -11,7 +11,8 @@ import java.util.*
 import java.util.concurrent.TimeUnit
 
 class LocationAdapter(
-    private val onMapClick: (LocationData) -> Unit
+    private val onMapClick: (LocationData) -> Unit,
+    private val onLocationClick: (LocationData) -> Unit
 ) : ListAdapter<LocationData, LocationAdapter.LocationViewHolder>(LocationDiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): LocationViewHolder {
@@ -20,7 +21,7 @@ class LocationAdapter(
             parent,
             false
         )
-        return LocationViewHolder(binding, onMapClick)
+        return LocationViewHolder(binding, onMapClick, onLocationClick)
     }
 
     override fun onBindViewHolder(holder: LocationViewHolder, position: Int) {
@@ -29,16 +30,29 @@ class LocationAdapter(
 
     class LocationViewHolder(
         private val binding: ItemLocationBinding,
-        private val onMapClick: (LocationData) -> Unit
+        private val onMapClick: (LocationData) -> Unit,
+        private val onLocationClick: (LocationData) -> Unit
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(location: LocationData) {
+            // Set click listener for the entire card
+            binding.locationCard.setOnClickListener {
+                onLocationClick(location)
+            }
+            // Show location name if available
+            if (location.name != null) {
+                binding.tvLocationName.text = location.name
+                binding.tvLocationName.visibility = android.view.View.VISIBLE
+            } else {
+                binding.tvLocationName.visibility = android.view.View.GONE
+            }
+
             binding.tvCoordinates.text = String.format(
                 "%.6f, %.6f",
                 location.latitude,
                 location.longitude
             )
-            
+
             binding.tvVisitCount.text = binding.root.context.getString(
                 R.string.visited_times,
                 location.visitCount
