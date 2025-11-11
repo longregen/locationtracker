@@ -14,6 +14,8 @@ jobs:
     name: Run E2E Tests on Android Emulator
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read  # Required to checkout code
 
     steps:
       - name: Checkout code
