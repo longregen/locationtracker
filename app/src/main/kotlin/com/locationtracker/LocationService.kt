@@ -19,17 +19,27 @@ class LocationService : Service(), LocationListener {
     companion object {
         private const val CHANNEL_ID = "LocationTrackerChannel"
         private const val NOTIFICATION_ID = 1
+        const val EXTRA_TEST_MODE = "test_mode"
     }
 
     private var locationManager: LocationManager? = null
     private lateinit var databaseHelper: DatabaseHelper
+    private var testMode = false
 
     override fun onCreate() {
         super.onCreate()
         databaseHelper = DatabaseHelper(this)
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        testMode = intent?.getBooleanExtra(EXTRA_TEST_MODE, false) ?: false
+        if (testMode) {
+            android.util.Log.d("LocationService", "Running in TEST MODE - will use GPS_PROVIDER")
+        }
         startLocationUpdates()
+        return START_STICKY
     }
 
     private fun createNotificationChannel() {
@@ -55,7 +65,7 @@ class LocationService : Service(), LocationListener {
 
     private fun startLocationUpdates() {
         locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
-        
+
         if (ActivityCompat.checkSelfPermission(
                 this,
                 android.Manifest.permission.ACCESS_FINE_LOCATION
@@ -65,18 +75,46 @@ class LocationService : Service(), LocationListener {
         }
 
         try {
+            // In test mode, use GPS_PROVIDER to receive emulator geo fix commands
+            // In production, use PASSIVE_PROVIDER for battery efficiency
+            val provider = if (testMode) {
+                android.util.Log.d("LocationService", "Using GPS_PROVIDER for testing")
+                LocationManager.GPS_PROVIDER
+            } else {
+                LocationManager.PASSIVE_PROVIDER
+            }
+
             locationManager?.requestLocationUpdates(
-                LocationManager.PASSIVE_PROVIDER,
-                0L,
-                0f,
+                provider,
+                0L,      // Minimum time interval (0 = as fast as possible in test mode)
+                0f,      // Minimum distance (0 = any distance)
                 this
             )
+
+            // In test mode, also try NETWORK_PROVIDER as fallback
+            if (testMode) {
+                try {
+                    locationManager?.requestLocationUpdates(
+                        LocationManager.NETWORK_PROVIDER,
+                        0L,
+                        0f,
+                        this
+                    )
+                    android.util.Log.d("LocationService", "Also listening to NETWORK_PROVIDER")
+                } catch (e: Exception) {
+                    android.util.Log.w("LocationService", "Could not register NETWORK_PROVIDER: ${e.message}")
+                }
+            }
+
+            android.util.Log.d("LocationService", "Location updates started with provider: $provider")
         } catch (e: Exception) {
+            android.util.Log.e("LocationService", "Failed to start location updates: ${e.message}")
             e.printStackTrace()
         }
     }
 
     override fun onLocationChanged(location: Location) {
+        android.util.Log.d("LocationService", "Location changed: (${location.latitude}, ${location.longitude}) from provider: ${location.provider}")
         databaseHelper.insertOrUpdateLocation(
             location.latitude,
             location.longitude,
