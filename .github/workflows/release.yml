@@ -7,10 +7,19 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-test-release:
-    name: Build, Test, and Create Release
+  # Run E2E tests first to validate before building release
+  e2e-test:
+    name: E2E Tests
+    uses: ./.github/workflows/e2e-test.yml
+    with:
+      artifact-name-prefix: 'release-e2e'
+
+  # Build and sign release APKs only after E2E tests pass
+  build-release:
+    name: Build and Sign Release APKs
+    needs: e2e-test
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     permissions:
       contents: write  # Required to create releases
 
@@ -47,109 +56,14 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build debug APK and test APK
+      - name: Build debug APKs
         run: |
-          ./gradlew assembleDebug assembleDebugAndroidTest \
+          ./gradlew assembleDebug \
             --parallel \
             --build-cache \
             --configuration-cache \
             --no-daemon \
             --stacktrace
-
-      - name: Enable KVM group perms
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: AVD cache
-        uses: actions/cache@v4
-        id: avd-cache
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-release-30-google_apis-x86_64
-
-      - name: Create AVD and generate snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@b530d96654c385303d652368551fb075bc2f0b6b # v2.35.0
-        with:
-          api-level: 30
-          target: google_apis
-          arch: x86_64
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: false
-          script: |
-            echo "Waiting for all Android services to be ready..."
-            adb wait-for-device
-            adb shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 2; done'
-            adb shell 'while [ -z "$(pm list packages)" ]; do sleep 1; done'
-            adb shell 'while [ "$(getprop init.svc.bootanim)" != "stopped" ]; do sleep 1; done'
-            echo "Boot completed. Waiting for input service..."
-            i=0; while [ $i -lt 30 ]; do if adb shell service check input 2>/dev/null | grep -q "Service input:"; then echo "Input service is ready"; break; fi; echo "Waiting for input service... ($i/30)"; sleep 2; i=$((i+1)); done
-            echo "All services ready. Generated AVD snapshot for caching."
-
-      - name: Run E2E tests on Android Emulator
-        uses: reactivecircus/android-emulator-runner@b530d96654c385303d652368551fb075bc2f0b6b # v2.35.0
-        with:
-          api-level: 30
-          target: google_apis
-          arch: x86_64
-          force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-          script: |
-            set -x
-            echo "=== Starting E2E Test Script ==="
-            adb wait-for-device
-            echo "Device connected"
-            adb shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do echo "Waiting for boot..."; sleep 2; done; echo "Boot completed"'
-            adb shell 'while [ -z "$(pm list packages)" ]; do echo "Waiting for package manager..."; sleep 1; done; echo "Package manager ready"'
-            adb shell 'while [ "$(getprop init.svc.bootanim)" != "stopped" ]; do echo "Waiting for bootanim..."; sleep 1; done; echo "Bootanim stopped"'
-            echo "Waiting for input service to be ready..."
-            i=0; while [ $i -lt 30 ]; do if adb shell service check input 2>/dev/null | grep -q "Service input:"; then echo "Input service is ready"; break; fi; echo "Waiting for input service... ($i/30)"; sleep 2; i=$((i+1)); done
-            adb shell settings put global window_animation_scale 0.0
-            adb shell settings put global transition_animation_scale 0.0
-            adb shell settings put global animator_duration_scale 0.0
-            adb shell appops set com.locationtracker android:mock_location allow || echo "Mock location permission already set"
-            echo "Setting initial location to London (51.5074, -0.1278)"
-            adb emu geo fix -0.1278 51.5074
-            sleep 2
-            echo "Installing APKs..."
-            adb install -r app/build/outputs/apk/debug/app-x86_64-debug.apk
-            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-            echo "Granting permissions..."
-            adb shell pm grant com.locationtracker android.permission.ACCESS_FINE_LOCATION
-            adb shell pm grant com.locationtracker android.permission.ACCESS_COARSE_LOCATION
-            adb shell pm grant com.locationtracker android.permission.POST_NOTIFICATIONS || echo "POST_NOTIFICATIONS permission not available"
-            adb shell mkdir -p /sdcard/Pictures
-            echo "Running E2E test..."
-            mkdir -p test-results
-            adb shell am instrument -w -r -e debug false -e class com.locationtracker.LocationTrackerE2ETest com.locationtracker.test/androidx.test.runner.AndroidJUnitRunner | tee test-results/test-output.txt
-            TEST_EXIT_CODE=$?
-            echo "Test execution completed. Exit code: $TEST_EXIT_CODE"
-            echo "Pulling screenshots..."
-            mkdir -p screenshots
-            adb pull /sdcard/Pictures/ screenshots/ || echo "No screenshots found"
-            echo "Screenshots captured:"
-            ls -la screenshots/Pictures/ || echo "No screenshots directory"
-            echo "=== E2E Test Script Completed ==="
-            exit $TEST_EXIT_CODE
-
-      - name: Upload E2E test artifacts
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: e2e-test-release-artifacts
-          path: |
-            screenshots/
-            test-results/
-            app/build/reports/androidTests/
-            app/build/outputs/androidTest-results/
-          if-no-files-found: warn
-          retention-days: 30
 
       - name: Build release APKs
         run: |
