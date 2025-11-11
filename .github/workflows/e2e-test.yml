@@ -15,7 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
-      contents: read  # Required to checkout code
+      contents: write  # Required to checkout code and push screenshot updates
+      pull-requests: write  # Required to create PRs for screenshot updates
 
     steps:
       - name: Checkout code
@@ -136,6 +137,109 @@ jobs:
             ls -la screenshots/Pictures/ || echo "No screenshots directory"
             echo "=== E2E Test Script Completed ==="
             exit $TEST_EXIT_CODE
+
+      - name: Compare and update reference screenshot
+        if: always() && hashFiles('screenshots/Pictures/01_app_launched.png') != ''
+        run: |
+          set -x
+          SCREENSHOT_NEW="screenshots/Pictures/01_app_launched.png"
+          SCREENSHOT_REF="images/main-view.png"
+
+          # Check if new screenshot exists
+          if [ ! -f "$SCREENSHOT_NEW" ]; then
+            echo "No new screenshot found, skipping comparison"
+            exit 0
+          fi
+
+          # Strip metadata from new screenshot to ensure consistent storage
+          echo "Stripping metadata from new screenshot..."
+          sudo apt-get update -qq && sudo apt-get install -y -qq optipng > /dev/null 2>&1
+
+          # Create normalized version without metadata
+          SCREENSHOT_NEW_NORMALIZED="screenshots/Pictures/01_app_launched_normalized.png"
+          cp "$SCREENSHOT_NEW" "$SCREENSHOT_NEW_NORMALIZED"
+          optipng -strip all "$SCREENSHOT_NEW_NORMALIZED" 2>/dev/null || echo "optipng failed, using original"
+
+          # If optipng succeeded, use normalized version
+          if [ -f "$SCREENSHOT_NEW_NORMALIZED" ]; then
+            SCREENSHOT_NEW="$SCREENSHOT_NEW_NORMALIZED"
+          fi
+
+          # Check if reference exists and compute hashes for logging
+          if [ -f "$SCREENSHOT_REF" ]; then
+            echo "Current reference SHA256: $(sha256sum "$SCREENSHOT_REF" | cut -d' ' -f1)"
+            echo "New screenshot SHA256: $(sha256sum "$SCREENSHOT_NEW" | cut -d' ' -f1)"
+          else
+            echo "ℹ No reference screenshot found - will create initial version"
+          fi
+
+          # Create update branch
+          BRANCH_NAME="ci/update-main-view-screenshot-${{ github.run_id }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Create and switch to new branch
+          git checkout -b "$BRANCH_NAME"
+
+          # Copy normalized screenshot to reference location (metadata already stripped)
+          mkdir -p images
+          cp "$SCREENSHOT_NEW" "$SCREENSHOT_REF"
+
+          # Verify the file is normalized
+          echo "Reference screenshot size: $(wc -c < "$SCREENSHOT_REF") bytes"
+
+          # Commit the change
+          git add "$SCREENSHOT_REF"
+          git commit -m "ci: Update main view reference screenshot
+
+          Automated update from E2E test run ${{ github.run_id }}
+
+          Source: ${{ github.ref }}
+          Workflow: ${{ github.workflow }}
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # Push the branch
+          git push -u origin "$BRANCH_NAME"
+
+          # Create PR using GitHub CLI
+          gh pr create \
+            --title "Update main view reference screenshot" \
+            --body "## Screenshot Update from E2E Tests
+
+          The main view screenshot from the latest E2E test run.
+
+          **Details:**
+          - Workflow: \`${{ github.workflow }}\`
+          - Run ID: \`${{ github.run_id }}\`
+          - Source Branch: \`${{ github.ref }}\`
+          - Test Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          ### Review:
+          1. 🔍 Review the visual appearance in this PR
+          2. ✅ If the screenshot looks correct, merge this PR
+          3. ❌ If there are issues, investigate the test run
+
+          View the screenshot directly: [\`images/main-view.png\`](/${{ github.repository }}/blob/$BRANCH_NAME/images/main-view.png)
+
+          **Note:** Minor differences (like timestamps) are expected." \
+            --base "${{ github.event.repository.default_branch || 'main' }}" \
+            --head "$BRANCH_NAME" \
+            --label "automated" \
+            --label "screenshots"
+
+          echo "✓ PR created successfully"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Upload main view screenshot
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ inputs.artifact-name-prefix }}-main-view
+          path: screenshots/Pictures/01_app_launched.png
+          compression-level: 0
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload E2E test screenshots
         if: always()
