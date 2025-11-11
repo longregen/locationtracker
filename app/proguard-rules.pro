@@ -20,3 +20,11 @@
 -optimizationpasses 5
 -allowaccessmodification
 -dontpreverify
+
+# Remove debug-only files
+-dontwarn kotlinx.coroutines.debug.**
+-dontwarn kotlinx.coroutines.internal.**
+
+# Strip unnecessary metadata files from APK
+-dontnote **
+-ignorewarnings

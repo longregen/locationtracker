@@ -4,17 +4,36 @@ on:
   push:
     tags:
       - 'v*'  # Trigger on version tags like v1.0.0, v2.1.3, etc.
+  pull_request:
+    types: [labeled, synchronize, opened, reopened]
 
 jobs:
   build-and-release:
     name: Build and Create Draft Release
     runs-on: ubuntu-latest
+    # Only run on tag pushes OR PRs with 'build-release' label
+    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.pull_request.labels.*.name, 'build-release')
     permissions:
       contents: write  # Required to create releases
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "is_tag=true" >> $GITHUB_OUTPUT
+            echo "Building release for tag: ${VERSION}"
+          else
+            VERSION="PR-${{ github.event.pull_request.number }}-SNAPSHOT"
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "is_tag=false" >> $GITHUB_OUTPUT
+            echo "Building snapshot for PR: ${VERSION}"
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -53,14 +72,13 @@ jobs:
             jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
               -keystore $GITHUB_WORKSPACE/release.keystore \
               -storepass "${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" \
-              -keypass "${{ secrets.RELEASE_KEY_PASSWORD }}" \
               "$apk" "${{ secrets.RELEASE_KEY_ALIAS }}"
           done
           ls -lh
 
       - name: Rename debug APKs with version
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
+          VERSION="${{ steps.version.outputs.version }}"
           cd app/build/outputs/apk/debug
           mv app-arm64-v8a-debug.apk LocationTracker-${VERSION}-DEBUG-arm64-v8a.apk
           mv app-armeabi-v7a-debug.apk LocationTracker-${VERSION}-DEBUG-armeabi-v7a.apk
@@ -70,7 +88,7 @@ jobs:
 
       - name: Rename release APKs with version
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
+          VERSION="${{ steps.version.outputs.version }}"
           cd app/build/outputs/apk/release
           mv app-arm64-v8a-release-unsigned.apk LocationTracker-${VERSION}-arm64-v8a.apk
           mv app-armeabi-v7a-release-unsigned.apk LocationTracker-${VERSION}-armeabi-v7a.apk
@@ -78,7 +96,18 @@ jobs:
           mv app-universal-release-unsigned.apk LocationTracker-${VERSION}-universal.apk
           ls -lh
 
-      - name: Create Draft Release
+      - name: Upload APKs as artifacts (PR builds)
+        if: steps.version.outputs.is_tag == 'false'
+        uses: actions/upload-artifact@v5
+        with:
+          name: LocationTracker-${{ steps.version.outputs.version }}
+          path: |
+            app/build/outputs/apk/debug/LocationTracker-*.apk
+            app/build/outputs/apk/release/LocationTracker-*.apk
+          retention-days: 30
+
+      - name: Create Draft Release (Tag builds)
+        if: steps.version.outputs.is_tag == 'true'
         uses: softprops/action-gh-release@5be0e66d93ac7ed76da52eca8bb058f665c3a5fe # v2
         with:
           draft: true
