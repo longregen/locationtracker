@@ -38,14 +38,14 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           cd app/build/outputs/apk/release
-          mv app-arm64-v8a-release-unsigned.apk LocationTracker-${VERSION}-arm64-v8a.apk
-          mv app-armeabi-v7a-release-unsigned.apk LocationTracker-${VERSION}-armeabi-v7a.apk
-          mv app-x86_64-release-unsigned.apk LocationTracker-${VERSION}-x86_64.apk
-          mv app-universal-release-unsigned.apk LocationTracker-${VERSION}-universal.apk
+          mv app-arm64-v8a-release-unsigned.apk LocationTracker-${VERSION}-SNAPSHOT-arm64-v8a.apk
+          mv app-armeabi-v7a-release-unsigned.apk LocationTracker-${VERSION}-SNAPSHOT-armeabi-v7a.apk
+          mv app-x86_64-release-unsigned.apk LocationTracker-${VERSION}-SNAPSHOT-x86_64.apk
+          mv app-universal-release-unsigned.apk LocationTracker-${VERSION}-SNAPSHOT-universal.apk
           ls -lh
 
       - name: Create Draft Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@5be0e66d93ac7ed76da52eca8bb058f665c3a5fe # v2
         with:
           draft: true
           generate_release_notes: true
