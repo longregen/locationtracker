@@ -1,0 +1,64 @@
+{
+  "name": "Android LocationTracker Development",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "17",
+      "installGradle": "true",
+      "gradleVersion": "8.11.1"
+    },
+    "ghcr.io/devcontainers/features/git:1": {
+      "version": "latest"
+    }
+  },
+
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "vscjava.vscode-gradle",
+        "mathiasfrohlich.Kotlin",
+        "fwcd.kotlin"
+      ],
+      "settings": {
+        "java.home": "/usr/local/sdkman/candidates/java/current",
+        "java.configuration.runtimes": [
+          {
+            "name": "JavaSE-17",
+            "path": "/usr/local/sdkman/candidates/java/current"
+          }
+        ]
+      }
+    }
+  },
+
+  "remoteEnv": {
+    "ANDROID_HOME": "/opt/android-sdk",
+    "ANDROID_SDK_ROOT": "/opt/android-sdk",
+    "PATH": "${containerEnv:PATH}:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools"
+  },
+
+  "mounts": [
+    "source=locationtracker-gradle-cache,target=/root/.gradle,type=volume",
+    "source=locationtracker-android-cache,target=/opt/android-sdk,type=volume"
+  ],
+
+  "updateContentCommand": "bash .devcontainer/setup.sh --quick",
+
+  "postAttachCommand": {
+    "server": "echo 'Android development environment ready!'"
+  },
+
+  "forwardPorts": [],
+
+  "portsAttributes": {},
+
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "32gb"
+  }
+}
