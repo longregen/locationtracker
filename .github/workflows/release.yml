@@ -26,6 +26,12 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Decode and setup keystore
+        run: |
+          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+
       - name: Build release APKs
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
@@ -34,14 +40,27 @@ jobs:
           echo "Generated APKs:"
           find app/build/outputs/apk/release -name "*.apk" -exec ls -lh {} \;
 
+      - name: Sign APKs
+        run: |
+          cd app/build/outputs/apk/release
+          for apk in *.apk; do
+            echo "Signing $apk..."
+            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+              -keystore $GITHUB_WORKSPACE/release.keystore \
+              -storepass "${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" \
+              -keypass "${{ secrets.RELEASE_KEY_PASSWORD }}" \
+              "$apk" "${{ secrets.RELEASE_KEY_ALIAS }}"
+          done
+          ls -lh
+
       - name: Rename APKs with version
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           cd app/build/outputs/apk/release
-          mv app-arm64-v8a-release-unsigned.apk LocationTracker-${VERSION}-SNAPSHOT-arm64-v8a.apk
-          mv app-armeabi-v7a-release-unsigned.apk LocationTracker-${VERSION}-SNAPSHOT-armeabi-v7a.apk
-          mv app-x86_64-release-unsigned.apk LocationTracker-${VERSION}-SNAPSHOT-x86_64.apk
-          mv app-universal-release-unsigned.apk LocationTracker-${VERSION}-SNAPSHOT-universal.apk
+          mv app-arm64-v8a-release-unsigned.apk LocationTracker-${VERSION}-DEBUG-arm64-v8a.apk
+          mv app-armeabi-v7a-release-unsigned.apk LocationTracker-${VERSION}-DEBUG-armeabi-v7a.apk
+          mv app-x86_64-release-unsigned.apk LocationTracker-${VERSION}-DEBUG-x86_64.apk
+          mv app-universal-release-unsigned.apk LocationTracker-${VERSION}-DEBUG-universal.apk
           ls -lh
 
       - name: Create Draft Release
