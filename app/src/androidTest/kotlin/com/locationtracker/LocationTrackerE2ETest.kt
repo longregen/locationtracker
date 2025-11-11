@@ -19,6 +19,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.io.FileInputStream
 
 @RunWith(AndroidJUnit4::class)
 class LocationTrackerE2ETest {
@@ -250,7 +251,7 @@ class LocationTrackerE2ETest {
             val result = instrumentation.uiAutomation.executeShellCommand(
                 "dumpsys activity services $packageName/.LocationService"
             )
-            val output = result.bufferedReader().use { it.readText() }
+            val output = FileInputStream(result.fileDescriptor).bufferedReader().use { it.readText() }
             result.close()
 
             if (output.contains("LocationService")) {
@@ -273,7 +274,7 @@ class LocationTrackerE2ETest {
                 "run-as $packageName sqlite3 /data/data/$packageName/databases/locations.db " +
                 "'SELECT latitude, longitude, timestamp FROM locations ORDER BY timestamp DESC LIMIT 5;'"
             )
-            val output = result.bufferedReader().use { it.readText() }
+            val output = FileInputStream(result.fileDescriptor).bufferedReader().use { it.readText() }
             result.close()
 
             println("Recent locations in database:")
@@ -298,7 +299,7 @@ class LocationTrackerE2ETest {
             val result = instrumentation.uiAutomation.executeShellCommand(
                 "logcat -d -s LocationService:D | tail -20"
             )
-            val logOutput = result.bufferedReader().use { it.readText() }
+            val logOutput = FileInputStream(result.fileDescriptor).bufferedReader().use { it.readText() }
             result.close()
 
             println("Recent LocationService logs:")
