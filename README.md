@@ -144,10 +144,31 @@ CREATE TABLE locations (
 
 ## CI/CD
 
-GitHub Actions workflow automatically builds APKs on push:
+GitHub Actions workflows:
+
+### Build Workflow
+Automatically builds APKs on push:
 - Builds for armeabi-v7a, arm64-v8a, x86_64
 - Uploads artifacts for download
 - Runs on Ubuntu latest with JDK 17
+
+### E2E Test Workflow
+Automated end-to-end testing on Android emulator:
+- Runs on Android API 30 and API 33 emulators (x86_64)
+- Tests location tracking with mock GPS coordinates
+- Simulates multiple locations (London → Paris → London)
+- Validates UI interactions (export JSON, map integration)
+- Captures screenshots at each test step
+- Uploads test results and screenshots as artifacts
+- Tests both older Android (pre-POST_NOTIFICATIONS) and newer Android (with POST_NOTIFICATIONS)
+
+The E2E test validates:
+1. App launch and permissions
+2. Location tracking with London coordinates (51.5074, -0.1278)
+3. Location change to Paris (48.8566, 2.3522)
+4. Location change back to London
+5. Export JSON functionality
+6. Map integration (geo intent)
 
 ## License
 
