@@ -1,33 +1,19 @@
-name: Android E2E Test
+name: E2E Test
 
 on:
-  # Run after Build APK workflow completes successfully on main branch
-  workflow_run:
-    workflows: ["Build APK"]
-    types:
-      - completed
-  # Also allow manual trigger
-  workflow_dispatch:
-  # For pull requests, run alongside Build APK workflow
-  pull_request:
-    branches: [ main ]
+  workflow_call:
+    inputs:
+      artifact-name-prefix:
+        description: 'Prefix for artifact names (e.g., "ci" or "release")'
+        required: false
+        type: string
+        default: 'e2e'
 
 jobs:
   e2e-test:
-    name: Android Emulator E2E Test
+    name: Run E2E Tests on Android Emulator
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # Only run if:
-    # - Manual trigger (workflow_dispatch) OR
-    # - Pull request OR
-    # - Triggered by successful Build APK workflow completion
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
-
-    strategy:
-      matrix:
-        api-level: [30, 33]
-        target: [google_apis]
-        arch: [x86_64]
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
@@ -40,30 +26,23 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+          gradle-home-cache-cleanup: true
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
       - name: Build debug APK and test APK
         run: |
-          # Retry logic for network timeouts
-          max_attempts=3
-          attempt=1
-          while [ $attempt -le $max_attempts ]; do
-            echo "Build attempt $attempt of $max_attempts"
-            if ./gradlew assembleDebug assembleDebugAndroidTest --no-daemon --stacktrace; then
-              echo "Build succeeded on attempt $attempt"
-              exit 0
-            else
-              if [ $attempt -lt $max_attempts ]; then
-                echo "Build failed, waiting 30 seconds before retry..."
-                sleep 30
-              else
-                echo "Build failed after $max_attempts attempts"
-                exit 1
-              fi
-            fi
-            attempt=$((attempt + 1))
-          done
+          ./gradlew assembleDebug assembleDebugAndroidTest \
+            --parallel \
+            --build-cache \
+            --configuration-cache \
+            --no-daemon \
+            --stacktrace
 
       - name: Enable KVM group perms
         run: |
@@ -78,15 +57,15 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-e2e-${{ matrix.api-level }}-${{ matrix.target }}-${{ matrix.arch }}
+          key: avd-e2e-33-google_apis-x86_64
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@b530d96654c385303d652368551fb075bc2f0b6b # v2.35.0
         with:
-          api-level: ${{ matrix.api-level }}
-          target: ${{ matrix.target }}
-          arch: ${{ matrix.arch }}
+          api-level: 33
+          target: google_apis
+          arch: x86_64
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: false
@@ -98,14 +77,18 @@ jobs:
             adb shell 'while [ "$(getprop init.svc.bootanim)" != "stopped" ]; do sleep 1; done'
             echo "Boot completed. Waiting for input service..."
             i=0; while [ $i -lt 30 ]; do if adb shell service check input 2>/dev/null | grep -q "Service input:"; then echo "Input service is ready"; break; fi; echo "Waiting for input service... ($i/30)"; sleep 2; i=$((i+1)); done
+            echo "Waiting for settings service..."
+            i=0; while [ $i -lt 30 ]; do if adb shell service check settings 2>/dev/null | grep -q "Service settings:"; then echo "Settings service is ready"; break; fi; echo "Waiting for settings service... ($i/30)"; sleep 2; i=$((i+1)); done
+            echo "Adding 5 second stabilization period..."
+            sleep 5
             echo "All services ready. Generated AVD snapshot for caching."
 
       - name: Run E2E tests on Android Emulator
         uses: reactivecircus/android-emulator-runner@b530d96654c385303d652368551fb075bc2f0b6b # v2.35.0
         with:
-          api-level: ${{ matrix.api-level }}
-          target: ${{ matrix.target }}
-          arch: ${{ matrix.arch }}
+          api-level: 33
+          target: google_apis
+          arch: x86_64
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
@@ -119,6 +102,11 @@ jobs:
             adb shell 'while [ "$(getprop init.svc.bootanim)" != "stopped" ]; do echo "Waiting for bootanim..."; sleep 1; done; echo "Bootanim stopped"'
             echo "Waiting for input service to be ready..."
             i=0; while [ $i -lt 30 ]; do if adb shell service check input 2>/dev/null | grep -q "Service input:"; then echo "Input service is ready"; break; fi; echo "Waiting for input service... ($i/30)"; sleep 2; i=$((i+1)); done
+            echo "Waiting for settings service to be ready..."
+            i=0; while [ $i -lt 30 ]; do if adb shell service check settings 2>/dev/null | grep -q "Service settings:"; then echo "Settings service is ready"; break; fi; echo "Waiting for settings service... ($i/30)"; sleep 2; i=$((i+1)); done
+            echo "Adding 5 second stabilization period..."
+            sleep 5
+            echo "Configuring emulator settings..."
             adb shell settings put global window_animation_scale 0.0
             adb shell settings put global transition_animation_scale 0.0
             adb shell settings put global animator_duration_scale 0.0
@@ -132,32 +120,34 @@ jobs:
             echo "Granting permissions..."
             adb shell pm grant com.locationtracker android.permission.ACCESS_FINE_LOCATION
             adb shell pm grant com.locationtracker android.permission.ACCESS_COARSE_LOCATION
-            adb shell pm grant com.locationtracker android.permission.POST_NOTIFICATIONS || echo "POST_NOTIFICATIONS permission not available on API ${{ matrix.api-level }}"
+            adb shell pm grant com.locationtracker android.permission.POST_NOTIFICATIONS
             adb shell mkdir -p /sdcard/Pictures
             echo "Running E2E test..."
             mkdir -p test-results
             adb shell am instrument -w -r -e debug false -e class com.locationtracker.LocationTrackerE2ETest com.locationtracker.test/androidx.test.runner.AndroidJUnitRunner | tee test-results/test-output.txt
-            echo "Test execution completed. Exit code: $?"
+            TEST_EXIT_CODE=$?
+            echo "Test execution completed. Exit code: $TEST_EXIT_CODE"
             echo "Pulling screenshots..."
             mkdir -p screenshots
             adb pull /sdcard/Pictures/ screenshots/ || echo "No screenshots found"
             echo "Screenshots captured:"
             ls -la screenshots/Pictures/ || echo "No screenshots directory"
             echo "=== E2E Test Script Completed ==="
+            exit $TEST_EXIT_CODE
 
-      - name: Upload screenshots
+      - name: Upload E2E test screenshots
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: e2e-test-screenshots-api${{ matrix.api-level }}
+          name: ${{ inputs.artifact-name-prefix }}-screenshots
           path: screenshots/
           retention-days: 30
 
-      - name: Upload test results
+      - name: Upload E2E test results
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: test-results-api${{ matrix.api-level }}
+          name: ${{ inputs.artifact-name-prefix }}-test-results
           path: |
             test-results/
             app/build/reports/androidTests/
