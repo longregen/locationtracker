@@ -23,7 +23,7 @@
     <string name="location_name_hint">Enter location name</string>
     <string name="set_name">Set Name</string>
     <string name="remove_name">Remove Name</string>
-    <string name="export_summary">Export Summary</string>
+    <string name="export_summary">Export</string>
     <string name="export_full">Full Export</string>
     <string name="pull_to_refresh">Pull to refresh</string>
     <string name="refreshing">Refreshing location…</string>
