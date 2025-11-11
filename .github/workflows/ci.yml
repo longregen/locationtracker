@@ -10,6 +10,7 @@ on:
 jobs:
   build-and-test:
     name: Build Debug APK and Run E2E Tests
+    permissions: {}
     uses: ./.github/workflows/e2e-test.yml
     with:
       artifact-name-prefix: 'ci-e2e'
