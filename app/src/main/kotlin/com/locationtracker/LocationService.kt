@@ -84,10 +84,14 @@ class LocationService : Service(), LocationListener {
                 LocationManager.PASSIVE_PROVIDER
             }
 
+            // Note: minTime and minDistance parameters are ignored by PASSIVE_PROVIDER
+            // PASSIVE_PROVIDER only receives locations requested by other apps, so these
+            // parameters have no effect on battery usage in production mode.
+            // See: https://developer.android.com/reference/android/location/LocationManager#PASSIVE_PROVIDER
             locationManager?.requestLocationUpdates(
                 provider,
-                0L,      // Minimum time interval (0 = as fast as possible in test mode)
-                0f,      // Minimum distance (0 = any distance)
+                0L,      // minTime: ignored by PASSIVE_PROVIDER; only used by GPS_PROVIDER in test mode
+                0f,      // minDistance: ignored by PASSIVE_PROVIDER; only used by GPS_PROVIDER in test mode
                 this
             )
 
