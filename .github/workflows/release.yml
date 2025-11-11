@@ -53,7 +53,6 @@ jobs:
             jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
               -keystore $GITHUB_WORKSPACE/release.keystore \
               -storepass "${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" \
-              -keypass "${{ secrets.RELEASE_KEY_PASSWORD }}" \
               "$apk" "${{ secrets.RELEASE_KEY_ALIAS }}"
           done
           ls -lh
