@@ -21,7 +21,7 @@ A lightweight Android app for opportunistic GPS location tracking with minimal b
 - **UI**: XML layouts with Material 3 (Material Design Components)
 - **Database**: SQLite with custom helper
 - **Min SDK**: 26 (Android 8.0)
-- **Target SDK**: 35 (Android 15)
+- **Target SDK**: 36
 - **Architecture**: MVVM-lite with View Binding
 
 ## Build
@@ -29,8 +29,8 @@ A lightweight Android app for opportunistic GPS location tracking with minimal b
 ### Prerequisites
 
 - JDK 17
-- Android SDK with API 35
-- Gradle 8.11.1 (included via wrapper)
+- Android SDK with API 36
+- Gradle 8.13 (included via wrapper)
 
 ### Building APKs
 
@@ -93,7 +93,7 @@ CREATE TABLE locations (
     latitude REAL NOT NULL,
     longitude REAL NOT NULL,
     timestamp INTEGER NOT NULL,
-    first_visit INTEGER DEFAULT 0,
+    first_visit INTEGER NOT NULL,
     visit_count INTEGER DEFAULT 1
 )
 ```
@@ -113,20 +113,11 @@ CREATE TABLE locations (
 ]
 ```
 
-## APK Size
-
-- Size: ~5.6 MB per variant
-- Optimizations:
-  - English resources only
-  - Platform-specific builds
-  - No Jetpack Compose (uses XML layouts)
-  - Material 3 components only
-
 ## Development Decisions
 
 ### Why XML Layouts Instead of Jetpack Compose?
 
-- **Size**: XML + Material 3 = 5.6 MB vs Compose = 17-19 MB
+- **Size**: XML layouts with Material 3 produce smaller APKs than Jetpack Compose
 - **Simplicity**: Straightforward UI doesn't need Compose complexity
 - **Battery**: Lighter framework = less overhead
 
@@ -138,7 +129,7 @@ CREATE TABLE locations (
 
 ### Why SQLite Instead of Room?
 
-- **Size**: Room adds ~1 MB to APK
+- **Size**: Room adds additional overhead to APK size
 - **Simplicity**: Direct SQL is sufficient for this use case
 - **Control**: Fine-grained control over queries and migrations
 
@@ -146,21 +137,19 @@ CREATE TABLE locations (
 
 GitHub Actions workflows:
 
-### Build Workflow
-Automatically builds APKs on push:
-- Builds for armeabi-v7a, arm64-v8a, x86_64
-- Uploads artifacts for download
-- Runs on Ubuntu latest with JDK 17
+### Build and Test Workflow
+Automatically runs on push and pull requests:
+- Builds debug APK and test APK
+- Runs end-to-end tests on Android API 33 emulator (x86_64)
+- Uses Ubuntu latest with JDK 17
 
 ### E2E Test Workflow
 Automated end-to-end testing on Android emulator:
-- Runs on Android API 30 and API 33 emulators (x86_64)
 - Tests location tracking with mock GPS coordinates
 - Simulates multiple locations (London → Paris → London)
 - Validates UI interactions (export JSON, map integration)
 - Captures screenshots at each test step
 - Uploads test results and screenshots as artifacts
-- Tests both older Android (pre-POST_NOTIFICATIONS) and newer Android (with POST_NOTIFICATIONS)
 
 The E2E test validates:
 1. App launch and permissions
