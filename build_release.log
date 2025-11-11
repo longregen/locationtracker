@@ -1,0 +1,63 @@
+> Task :app:buildKotlinToolingMetadata
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:generateReleaseResValues
+> Task :app:checkReleaseAarMetadata
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:generateReleaseResources
+> Task :app:packageReleaseResources
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease
+> Task :app:parseReleaseLocalResources
+> Task :app:mergeReleaseResources
+> Task :app:processReleaseMainManifest
+> Task :app:processReleaseManifest
+> Task :app:javaPreCompileRelease
+> Task :app:extractProguardFiles UP-TO-DATE
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:mergeReleaseNativeLibs
+> Task :app:processReleaseManifestForPackage
+> Task :app:checkReleaseDuplicateClasses
+
+> Task :app:stripReleaseDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libandroidx.graphics.path.so.
+
+> Task :app:extractReleaseNativeSymbolTables
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:mergeReleaseStartupProfile
+> Task :app:mergeReleaseArtProfile
+> Task :app:mergeReleaseShaders
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets
+> Task :app:compressReleaseAssets
+> Task :app:extractReleaseVersionControlInfo
+> Task :app:processReleaseResources
+> Task :app:collectReleaseDependencies
+> Task :app:sdkReleaseDependencyData
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:convertLinkedResourcesToProtoRelease
+
+> Task :app:compileReleaseKotlin FAILED
+e: file:///home/ubuntu/LocationTracker/app/src/main/kotlin/com/locationtracker/MainActivity.kt:17:47 Unresolved reference 'Map'.
+e: file:///home/ubuntu/LocationTracker/app/src/main/kotlin/com/locationtracker/MainActivity.kt:18:47 Unresolved reference 'Save'.
+e: file:///home/ubuntu/LocationTracker/app/src/main/kotlin/com/locationtracker/MainActivity.kt:196:36 Unresolved reference 'Save'.
+e: file:///home/ubuntu/LocationTracker/app/src/main/kotlin/com/locationtracker/MainActivity.kt:278:35 Unresolved reference 'Map'.
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileReleaseKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 6s
+33 actionable tasks: 32 executed, 1 up-to-date

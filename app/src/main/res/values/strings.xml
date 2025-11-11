@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Location Tracker</string>
+    <string name="export_json">Export JSON</string>
+    <string name="recent_locations">Recent Locations</string>
+    <string name="view_map">Map</string>
+    <string name="no_locations_yet">No locations yet</string>
+    <string name="no_locations_description">Location tracking is active. Your locations will appear here as you move around.</string>
+    <string name="location_permission_required">Location permission is required for tracking</string>
+    <string name="notification_permission_required">Notification permission is required</string>
+    <string name="tracking_location">Tracking your location</string>
+    <string name="location_service_running">Location tracking is active</string>
+    <string name="visited_times">Visited %d times</string>
+    <string name="last_visit">Last visit: %s</string>
+    <string name="export_success">Locations exported successfully</string>
+    <string name="export_failed">Failed to export locations</string>
+    <string name="no_data_to_export">No location data to export</string>
+    <string name="gps_status">GPS Status</string>
+    <string name="waiting_for_gps">Waiting for GPS update…</string>
+    <string name="last_gps_update">Last update: %s</string>
+    <string name="time_spent">Time spent: %s</string>
+</resources>

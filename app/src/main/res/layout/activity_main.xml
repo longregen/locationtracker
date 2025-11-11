@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true">
+
+    <com.google.android.material.appbar.AppBarLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fitsSystemWindows="true">
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            app:title="@string/app_name"
+            app:titleTextColor="?attr/colorOnPrimary" />
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- GPS Status Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardElevation="1dp"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="?attr/colorPrimaryContainer">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="12dp"
+                    android:gravity="center_vertical">
+
+                    <ImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:src="@android:drawable/ic_menu_mylocation"
+                        android:tint="?attr/colorOnPrimaryContainer"
+                        android:layout_marginEnd="12dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <com.google.android.material.textview.MaterialTextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/gps_status"
+                            android:textAppearance="?attr/textAppearanceLabelSmall"
+                            android:textColor="?attr/colorOnPrimaryContainer" />
+
+                        <com.google.android.material.textview.MaterialTextView
+                            android:id="@+id/tvGpsStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/waiting_for_gps"
+                            android:textAppearance="?attr/textAppearanceBodyMedium"
+                            android:textColor="?attr/colorOnPrimaryContainer"
+                            android:textStyle="bold" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Export Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnExport"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/export_json"
+                android:textAllCaps="false"
+                app:icon="@android:drawable/ic_menu_save"
+                app:iconGravity="start"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_marginBottom="16dp" />
+
+            <!-- Locations Title -->
+            <com.google.android.material.textview.MaterialTextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/recent_locations"
+                android:textAppearance="?attr/textAppearanceTitleLarge"
+                android:layout_marginBottom="12dp" />
+
+            <!-- RecyclerView for locations -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recyclerView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:nestedScrollingEnabled="false"
+                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
+
+            <!-- Empty state -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/emptyState"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="32dp"
+                android:visibility="gone"
+                app:cardElevation="0dp"
+                app:cardBackgroundColor="?attr/colorSurfaceVariant"
+                app:contentPadding="24dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center">
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/no_locations_yet"
+                        android:textAppearance="?attr/textAppearanceBodyLarge"
+                        android:textAlignment="center" />
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/no_locations_description"
+                        android:textAppearance="?attr/textAppearanceBodyMedium"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textAlignment="center"
+                        android:layout_marginTop="8dp" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+
+    </androidx.core.widget.NestedScrollView>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

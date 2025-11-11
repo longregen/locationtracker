@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="12dp"
+    app:cardElevation="2dp"
+    app:cardCornerRadius="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/tvCoordinates"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="?attr/textAppearanceBodyLarge"
+                    android:textStyle="bold"
+                    tools:text="37.422160, -122.084270" />
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/tvVisitCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:layout_marginTop="4dp"
+                    tools:text="Visited 5 times" />
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/tvTimeSpent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:textColor="?attr/colorPrimary"
+                    android:layout_marginTop="2dp"
+                    tools:text="Time spent: 2h 30m" />
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:id="@+id/tvTimestamp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="?attr/textAppearanceBodySmall"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:layout_marginTop="2dp"
+                    tools:text="Last visit: 2 hours ago" />
+
+            </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnViewMap"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/view_map"
+                android:textAllCaps="false"
+                app:icon="@android:drawable/ic_dialog_map"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                app:iconGravity="textStart" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>
