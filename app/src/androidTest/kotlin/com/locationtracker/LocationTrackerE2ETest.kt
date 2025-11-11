@@ -19,6 +19,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.io.FileInputStream
 
 @RunWith(AndroidJUnit4::class)
 class LocationTrackerE2ETest {
@@ -75,6 +76,12 @@ class LocationTrackerE2ETest {
 
         println("=== Starting E2E Test ===")
 
+        // Enable test mode for LocationService to use GPS_PROVIDER
+        enableTestMode()
+
+        // Verify service is running
+        verifyLocationServiceRunning()
+
         // Step 1: Mock London location
         println("Step 1: Setting location to London (${londonLat}, ${londonLon})")
         setMockLocation(londonLat, londonLon)
@@ -82,6 +89,9 @@ class LocationTrackerE2ETest {
         // Wait for location to be processed
         println("Waiting for location update...")
         SystemClock.sleep(8000)
+
+        // Verify location was recorded
+        verifyLocationRecorded("London", londonLat, londonLon)
 
         takeScreenshot("02_london_location")
 
@@ -93,6 +103,9 @@ class LocationTrackerE2ETest {
         println("Waiting for Paris location update...")
         SystemClock.sleep(8000)
 
+        // Verify Paris location was recorded
+        verifyLocationRecorded("Paris", parisLat, parisLon)
+
         takeScreenshot("03_paris_location")
 
         // Step 3: Change back to London
@@ -102,6 +115,9 @@ class LocationTrackerE2ETest {
 
         println("Waiting for London location update again...")
         SystemClock.sleep(8000)
+
+        // Verify London location was updated
+        verifyLocationRecorded("London (2nd visit)", londonLat, londonLon)
 
         takeScreenshot("04_back_to_london")
 
@@ -198,6 +214,98 @@ class LocationTrackerE2ETest {
             println("Mock location set via geo command: ($latitude, $longitude)")
         } catch (e: Exception) {
             println("Failed to set mock location via geo: ${e.message}")
+        }
+    }
+
+    private fun enableTestMode() {
+        println("Enabling test mode for LocationService...")
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+
+        // Stop the service first if it's running
+        try {
+            instrumentation.uiAutomation.executeShellCommand(
+                "am stopservice $packageName/.LocationService"
+            ).close()
+            SystemClock.sleep(1000)
+        } catch (e: Exception) {
+            println("Service not running or failed to stop: ${e.message}")
+        }
+
+        // Start service in test mode
+        try {
+            instrumentation.uiAutomation.executeShellCommand(
+                "am startservice --ez test_mode true $packageName/.LocationService"
+            ).close()
+            SystemClock.sleep(2000)
+            println("LocationService started in test mode")
+        } catch (e: Exception) {
+            println("Failed to start service in test mode: ${e.message}")
+        }
+    }
+
+    private fun verifyLocationServiceRunning() {
+        println("Verifying LocationService is running...")
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+
+        try {
+            val result = instrumentation.uiAutomation.executeShellCommand(
+                "dumpsys activity services $packageName/.LocationService"
+            )
+            val output = FileInputStream(result.fileDescriptor).bufferedReader().use { it.readText() }
+            result.close()
+
+            if (output.contains("LocationService")) {
+                println("✓ LocationService is running")
+            } else {
+                println("✗ WARNING: LocationService may not be running")
+            }
+        } catch (e: Exception) {
+            println("Failed to verify service status: ${e.message}")
+        }
+    }
+
+    private fun verifyLocationRecorded(locationName: String, expectedLat: Double, expectedLon: Double) {
+        println("Verifying $locationName was recorded in database...")
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+
+        try {
+            // Query the database to check if location was recorded
+            val result = instrumentation.uiAutomation.executeShellCommand(
+                "run-as $packageName sqlite3 /data/data/$packageName/databases/locations.db " +
+                "'SELECT latitude, longitude, timestamp FROM locations ORDER BY timestamp DESC LIMIT 5;'"
+            )
+            val output = FileInputStream(result.fileDescriptor).bufferedReader().use { it.readText() }
+            result.close()
+
+            println("Recent locations in database:")
+            println(output)
+
+            // Check if the expected coordinates appear in the database
+            val latStr = String.format("%.4f", expectedLat)
+            val lonStr = String.format("%.4f", expectedLon)
+
+            if (output.contains(latStr) || output.contains(lonStr)) {
+                println("✓ Location $locationName found in database")
+            } else {
+                println("✗ WARNING: Location $locationName NOT found in database!")
+                println("Expected: ($expectedLat, $expectedLon)")
+            }
+        } catch (e: Exception) {
+            println("Failed to verify location in database: ${e.message}")
+        }
+
+        // Also check logcat for location updates
+        try {
+            val result = instrumentation.uiAutomation.executeShellCommand(
+                "logcat -d -s LocationService:D | tail -20"
+            )
+            val logOutput = FileInputStream(result.fileDescriptor).bufferedReader().use { it.readText() }
+            result.close()
+
+            println("Recent LocationService logs:")
+            println(logOutput)
+        } catch (e: Exception) {
+            println("Failed to read logcat: ${e.message}")
         }
     }
 
