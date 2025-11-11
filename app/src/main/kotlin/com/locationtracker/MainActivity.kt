@@ -4,18 +4,22 @@ import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.LayoutInflater
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.textfield.TextInputEditText
 import com.locationtracker.databinding.ActivityMainBinding
 import org.json.JSONArray
 import org.json.JSONObject
@@ -60,15 +64,21 @@ class MainActivity : AppCompatActivity() {
 
         setupRecyclerView()
         setupExportButton()
+        setupSwipeRefresh()
         checkPermissionsAndStart()
         updateGpsStatus()
     }
 
     private fun setupRecyclerView() {
-        adapter = LocationAdapter { location ->
-            openMap(location.latitude, location.longitude)
-        }
-        
+        adapter = LocationAdapter(
+            onMapClick = { location ->
+                openMap(location.latitude, location.longitude)
+            },
+            onLocationClick = { location ->
+                showLocationNameDialog(location)
+            }
+        )
+
         binding.recyclerView.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = this@MainActivity.adapter
@@ -76,8 +86,81 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupExportButton() {
-        binding.btnExport.setOnClickListener {
-            exportToJson()
+        binding.btnExportSummary.setOnClickListener {
+            exportSummaryToJson()
+        }
+
+        binding.btnExportFull.setOnClickListener {
+            exportFullToJson()
+        }
+    }
+
+    private fun setupSwipeRefresh() {
+        binding.swipeRefresh.setOnRefreshListener {
+            requestActiveLocationUpdate()
+        }
+    }
+
+    private fun requestActiveLocationUpdate() {
+        // Check if we have location permissions
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            binding.swipeRefresh.isRefreshing = false
+            Toast.makeText(this, R.string.location_permission_required, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
+
+        try {
+            // Try to get last known location first
+            val lastLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+
+            if (lastLocation != null) {
+                val accuracy = if (lastLocation.hasAccuracy()) lastLocation.accuracy else null
+                databaseHelper.insertOrUpdateLocation(
+                    lastLocation.latitude,
+                    lastLocation.longitude,
+                    System.currentTimeMillis(),
+                    accuracy
+                )
+                loadLocations()
+                updateGpsStatus()
+            }
+
+            // Request a single location update
+            locationManager.requestSingleUpdate(
+                LocationManager.GPS_PROVIDER,
+                { location ->
+                    val accuracy = if (location.hasAccuracy()) location.accuracy else null
+                    databaseHelper.insertOrUpdateLocation(
+                        location.latitude,
+                        location.longitude,
+                        System.currentTimeMillis(),
+                        accuracy
+                    )
+                    loadLocations()
+                    updateGpsStatus()
+                    binding.swipeRefresh.isRefreshing = false
+                },
+                Looper.getMainLooper()
+            )
+
+            // Set a timeout in case GPS takes too long
+            handler.postDelayed({
+                if (binding.swipeRefresh.isRefreshing) {
+                    binding.swipeRefresh.isRefreshing = false
+                    Toast.makeText(this, "Location update timeout", Toast.LENGTH_SHORT).show()
+                }
+            }, 10000) // 10 second timeout
+
+        } catch (e: Exception) {
+            binding.swipeRefresh.isRefreshing = false
+            Toast.makeText(this, "Failed to request location: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -173,9 +256,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun exportToJson() {
+    private fun exportSummaryToJson() {
         val locations = databaseHelper.getAllLocations()
-        
+
         if (locations.isEmpty()) {
             Toast.makeText(this, R.string.no_data_to_export, Toast.LENGTH_SHORT).show()
             return
@@ -191,11 +274,17 @@ class MainActivity : AppCompatActivity() {
                     put("first_visit", location.firstVisit)
                     put("visit_count", location.visitCount)
                     put("time_spent_ms", location.timestamp - location.firstVisit)
+                    if (location.name != null) {
+                        put("name", location.name)
+                    }
+                    if (location.accuracy != null) {
+                        put("accuracy_meters", location.accuracy)
+                    }
                 }
                 jsonArray.put(jsonObject)
             }
 
-            val fileName = "locations_${System.currentTimeMillis()}.json"
+            val fileName = "locations_summary_${System.currentTimeMillis()}.json"
             val file = File(cacheDir, fileName)
             FileWriter(file).use { writer ->
                 writer.write(jsonArray.toString(2))
@@ -213,13 +302,99 @@ class MainActivity : AppCompatActivity() {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
 
-            startActivity(Intent.createChooser(shareIntent, "Export Locations"))
+            startActivity(Intent.createChooser(shareIntent, "Export Location Summary"))
             Toast.makeText(this, R.string.export_success, Toast.LENGTH_SHORT).show()
 
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(this, R.string.export_failed, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun exportFullToJson() {
+        val rawLocations = databaseHelper.getAllRawLocations()
+
+        if (rawLocations.isEmpty()) {
+            Toast.makeText(this, R.string.no_data_to_export, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        try {
+            val jsonArray = JSONArray()
+            rawLocations.forEach { location ->
+                val jsonObject = JSONObject().apply {
+                    put("latitude", location.latitude)
+                    put("longitude", location.longitude)
+                    put("timestamp", location.timestamp)
+                    if (location.accuracy != null) {
+                        put("accuracy_meters", location.accuracy)
+                    }
+                }
+                jsonArray.put(jsonObject)
+            }
+
+            val fileName = "locations_full_${System.currentTimeMillis()}.json"
+            val file = File(cacheDir, fileName)
+            FileWriter(file).use { writer ->
+                writer.write(jsonArray.toString(2))
+            }
+
+            val uri = FileProvider.getUriForFile(
+                this,
+                "${packageName}.fileprovider",
+                file
+            )
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            startActivity(Intent.createChooser(shareIntent, "Export Full Location History"))
+            Toast.makeText(this, R.string.export_success, Toast.LENGTH_SHORT).show()
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, R.string.export_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showLocationNameDialog(location: LocationData) {
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_location_name, null)
+        val etLocationName = dialogView.findViewById<TextInputEditText>(R.id.etLocationName)
+
+        // Pre-fill with existing name if available
+        etLocationName.setText(location.name ?: "")
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+
+        dialogView.findViewById<View>(R.id.btnSetName).setOnClickListener {
+            val name = etLocationName.text.toString().trim()
+            if (name.isNotEmpty()) {
+                databaseHelper.setLocationName(location.latitude, location.longitude, name)
+                loadLocations()
+                dialog.dismiss()
+                Toast.makeText(this, "Location name set", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Please enter a name", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        dialogView.findViewById<View>(R.id.btnCancel).setOnClickListener {
+            dialog.dismiss()
+        }
+
+        dialogView.findViewById<View>(R.id.btnRemoveName).setOnClickListener {
+            databaseHelper.removeLocationName(location.latitude, location.longitude)
+            loadLocations()
+            dialog.dismiss()
+            Toast.makeText(this, "Location name removed", Toast.LENGTH_SHORT).show()
+        }
+
+        dialog.show()
     }
 
     override fun onDestroy() {

@@ -118,11 +118,13 @@ class LocationService : Service(), LocationListener {
     }
 
     override fun onLocationChanged(location: Location) {
-        android.util.Log.d("LocationService", "Location changed: (${location.latitude}, ${location.longitude}) from provider: ${location.provider}")
+        val accuracy = if (location.hasAccuracy()) location.accuracy else null
+        android.util.Log.d("LocationService", "Location changed: (${location.latitude}, ${location.longitude}) accuracy: $accuracy from provider: ${location.provider}")
         databaseHelper.insertOrUpdateLocation(
             location.latitude,
             location.longitude,
-            System.currentTimeMillis()
+            System.currentTimeMillis(),
+            accuracy
         )
     }
 
