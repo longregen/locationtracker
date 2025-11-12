@@ -84,51 +84,9 @@
         packages = {
           default = self.packages.${system}.apk;
 
-          apk = pkgs.stdenv.mkDerivation {
-            pname = "locationtracker";
-            version = "1.0.0";
-
-            src = ./.;
-
-            buildInputs = [
-              androidSdk
-              pkgs.jdk17
-              buildScript
-            ];
-
-            buildPhase = ''
-              export ANDROID_HOME="${androidSdk}/share/android-sdk"
-              export ANDROID_SDK_ROOT="$ANDROID_HOME"
-              export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/27.2.12479018"
-              export JAVA_HOME="${pkgs.jdk17.home}"
-
-              # Grant execute permission
-              chmod +x ./gradlew
-
-              # Build only armeabi-v7a debug APK using ABI filter
-              ./gradlew assembleDebug \
-                -Pandroid.injected.abi=armeabi-v7a \
-                --parallel \
-                --build-cache \
-                --no-daemon \
-                --stacktrace
-            '';
-
-            installPhase = ''
-              mkdir -p $out
-
-              # Find and copy the APK from possible locations
-              if [ -f "app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk" ]; then
-                cp app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk $out/
-              elif [ -f "app/build/outputs/apk/armeabi-v7a/debug/app-armeabi-v7a-debug.apk" ]; then
-                cp app/build/outputs/apk/armeabi-v7a/debug/app-armeabi-v7a-debug.apk $out/
-              else
-                echo "ERROR: Could not find armeabi-v7a debug APK"
-                find app/build/outputs/apk -name "*.apk" -type f || true
-                exit 1
-              fi
-            '';
-          };
+          # Note: The APK build requires network access for Gradle dependencies
+          # Use 'nix develop' and run the build script for actual builds
+          apk = buildScript;
         };
 
         # Development shell with Android SDK and tools
