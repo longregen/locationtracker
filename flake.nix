@@ -22,7 +22,7 @@
         };
 
         # Android SDK configuration
-        androidComposition = android-nixpkgs.sdk.${system} (sdkPkgs: with sdkPkgs; [
+        androidSdk = android-nixpkgs.sdk.${system} (sdkPkgs: with sdkPkgs; [
           cmdline-tools-latest
           build-tools-35-0-0
           platform-tools
@@ -32,13 +32,11 @@
           emulator
         ]);
 
-        androidSdk = androidComposition.androidsdk;
-
         # Build script for armeabi-v7a debug APK
         buildScript = pkgs.writeShellScriptBin "build-apk" ''
           set -e
 
-          export ANDROID_HOME="${androidSdk}/libexec/android-sdk"
+          export ANDROID_HOME="${androidSdk}/share/android-sdk"
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
           export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/27.2.12479018"
           export JAVA_HOME="${pkgs.jdk17.home}"
@@ -99,7 +97,7 @@
             ];
 
             buildPhase = ''
-              export ANDROID_HOME="${androidSdk}/libexec/android-sdk"
+              export ANDROID_HOME="${androidSdk}/share/android-sdk"
               export ANDROID_SDK_ROOT="$ANDROID_HOME"
               export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/27.2.12479018"
               export JAVA_HOME="${pkgs.jdk17.home}"
@@ -143,7 +141,7 @@
           ];
 
           shellHook = ''
-            export ANDROID_HOME="${androidSdk}/libexec/android-sdk"
+            export ANDROID_HOME="${androidSdk}/share/android-sdk"
             export ANDROID_SDK_ROOT="$ANDROID_HOME"
             export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/27.2.12479018"
             export JAVA_HOME="${pkgs.jdk17.home}"
