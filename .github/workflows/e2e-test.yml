@@ -207,8 +207,9 @@ jobs:
           # Push the branch (force push in case of conflicts)
           git push -u origin "$BRANCH_NAME" --force
 
-          # Create PR using GitHub CLI
-          gh pr create \
+          # Create PR using GitHub CLI (with error handling)
+          echo "Attempting to create pull request..."
+          if gh pr create \
             --title "Update main view reference screenshot" \
             --body "## Screenshot Update from E2E Tests
 
@@ -231,9 +232,17 @@ jobs:
             --base "${{ github.event.repository.default_branch || 'main' }}" \
             --head "$BRANCH_NAME" \
             --label "automated" \
-            --label "screenshots"
-
-          echo "✓ PR created successfully"
+            --label "screenshots" 2>&1; then
+            echo "✓ PR created successfully"
+          else
+            echo "⚠ Could not create PR automatically. This may be due to repository permissions."
+            echo "📋 Branch '$BRANCH_NAME' has been pushed with the updated screenshot."
+            echo "🔗 Create PR manually at: ${{ github.server_url }}/${{ github.repository }}/pull/new/$BRANCH_NAME"
+            echo ""
+            echo "ℹ️  To enable automatic PR creation, go to:"
+            echo "   Settings -> Actions -> General -> Workflow permissions"
+            echo "   and enable 'Allow GitHub Actions to create and approve pull requests'"
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
 
