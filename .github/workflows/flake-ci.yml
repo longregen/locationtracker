@@ -1,0 +1,80 @@
+name: Flake CI - Build APK with Nix
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-with-nix:
+    name: Build ARM v7 Debug APK with Nix Flake
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v14
+
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v8
+
+      - name: Build ARM v7 debug APK with Nix flake
+        run: |
+          echo "Building APK using Nix flake..."
+          nix build .#apk --print-build-logs
+
+      - name: List build outputs
+        run: |
+          echo "Build artifacts:"
+          ls -lh result/
+          file result/app-armeabi-v7a-debug.apk
+
+      - name: Get APK info
+        run: |
+          # Copy APK to workspace for analysis
+          cp result/app-armeabi-v7a-debug.apk ./app-armeabi-v7a-debug.apk
+
+          echo "APK Size:"
+          ls -lh app-armeabi-v7a-debug.apk
+
+          echo "APK SHA256:"
+          sha256sum app-armeabi-v7a-debug.apk
+
+      - name: Upload ARM v7 debug APK
+        uses: actions/upload-artifact@v5
+        with:
+          name: app-armeabi-v7a-debug
+          path: result/app-armeabi-v7a-debug.apk
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload build summary
+        if: always()
+        run: |
+          {
+            echo "## Nix Flake Build Summary"
+            echo ""
+            echo "**Architecture:** ARM v7 (armeabi-v7a)"
+            echo "**Build Type:** Debug"
+            echo ""
+            echo "### Build Details"
+            echo "- Workflow: \`${{ github.workflow }}\`"
+            echo "- Run ID: \`${{ github.run_id }}\`"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo ""
+            if [ -f "result/app-armeabi-v7a-debug.apk" ]; then
+              echo "### APK Information"
+              echo '```'
+              ls -lh result/app-armeabi-v7a-debug.apk
+              echo '```'
+              echo ""
+              echo "**SHA256:** \`$(sha256sum result/app-armeabi-v7a-debug.apk | cut -d' ' -f1)\`"
+            fi
+          } >> $GITHUB_STEP_SUMMARY
