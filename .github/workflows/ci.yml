@@ -16,3 +16,69 @@ jobs:
     uses: ./.github/workflows/e2e-test.yml
     with:
       artifact-name-prefix: 'ci-e2e'
+
+  auto-tag:
+    name: Auto Tag Version
+    needs: build-and-test
+    # Only run on main branch pushes (not PRs)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create tags
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # Fetch all history to get tags
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Get latest tag and bump version
+        id: bump_version
+        run: |
+          # Fetch all tags
+          git fetch --tags
+
+          # Get the latest tag (defaults to v0.0.0 if no tags exist)
+          LATEST_TAG=$(git tag -l "v*.*.*" | sort -V | tail -n1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No existing tags found, starting with v1.0.0"
+            NEW_TAG="v1.0.0"
+          else
+            echo "Latest tag: $LATEST_TAG"
+
+            # Remove 'v' prefix and split version
+            VERSION=${LATEST_TAG#v}
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+            # Bump patch version by default
+            # You can customize this logic to check commit messages for
+            # keywords like [major], [minor], or [patch]
+            PATCH=$((PATCH + 1))
+
+            NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          fi
+
+          echo "New tag: $NEW_TAG"
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create and push tag
+        env:
+          NEW_TAG: ${{ steps.bump_version.outputs.new_tag }}
+        run: |
+          git tag -a "$NEW_TAG" -m "Auto-generated tag after successful build and e2e tests
+
+          Workflow: ${{ github.workflow }}
+          Run ID: ${{ github.run_id }}
+          Commit: ${{ github.sha }}
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          git push origin "$NEW_TAG"
+
+          echo "✓ Created and pushed tag: $NEW_TAG"
+          echo "This will trigger the release workflow to build signed APKs"
