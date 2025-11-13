@@ -1,0 +1,102 @@
+name: Flake CI - Build APK with Nix
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-with-nix:
+    name: Build ARM v7 Debug APK with Nix Flake
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v14
+
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v8
+
+      - name: Build ARM v7 debug APK with Nix flake environment
+        run: |
+          echo "Building APK using Nix flake environment..."
+          nix develop --command bash -c '
+            export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+            echo "ANDROID_HOME: $ANDROID_HOME"
+            echo "JAVA_HOME: $JAVA_HOME"
+
+            # Use Gradle directly to build
+            gradle assembleDebug \
+              -Pandroid.injected.abi=armeabi-v7a \
+              --no-daemon \
+              --stacktrace
+          '
+
+      - name: List build outputs
+        run: |
+          echo "Build artifacts:"
+          find app/build/outputs/apk -name "*.apk" -type f
+
+      - name: Find and prepare APK
+        run: |
+          # Find the APK
+          if [ -f "app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk" ]; then
+            APK_PATH="app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk"
+          elif [ -f "app/build/outputs/apk/armeabi-v7a/debug/app-armeabi-v7a-debug.apk" ]; then
+            APK_PATH="app/build/outputs/apk/armeabi-v7a/debug/app-armeabi-v7a-debug.apk"
+          else
+            echo "ERROR: Could not find ARM v7 debug APK"
+            exit 1
+          fi
+
+          echo "Found APK at: $APK_PATH"
+
+          # Copy to a standard location
+          mkdir -p build-output
+          cp "$APK_PATH" build-output/app-armeabi-v7a-debug.apk
+
+          echo "APK Size:"
+          ls -lh build-output/app-armeabi-v7a-debug.apk
+
+          echo "APK SHA256:"
+          sha256sum build-output/app-armeabi-v7a-debug.apk
+
+      - name: Upload ARM v7 debug APK
+        uses: actions/upload-artifact@v5
+        with:
+          name: app-armeabi-v7a-debug
+          path: build-output/app-armeabi-v7a-debug.apk
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload build summary
+        if: always()
+        run: |
+          {
+            echo "## Nix Flake Build Summary"
+            echo ""
+            echo "**Architecture:** ARM v7 (armeabi-v7a)"
+            echo "**Build Type:** Debug"
+            echo ""
+            echo "### Build Details"
+            echo "- Workflow: \`${{ github.workflow }}\`"
+            echo "- Run ID: \`${{ github.run_id }}\`"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo ""
+            if [ -f "build-output/app-armeabi-v7a-debug.apk" ]; then
+              echo "### APK Information"
+              echo '```'
+              ls -lh build-output/app-armeabi-v7a-debug.apk
+              echo '```'
+              echo ""
+              echo "**SHA256:** \`$(sha256sum build-output/app-armeabi-v7a-debug.apk | cut -d' ' -f1)\`"
+            fi
+          } >> $GITHUB_STEP_SUMMARY
