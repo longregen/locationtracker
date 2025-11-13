@@ -1,0 +1,128 @@
+name: Bump Android Version
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  bump-version:
+    name: Bump Android Manifest Version
+    runs-on: ubuntu-latest
+    # Only run on main branch pushes (not PRs)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write  # Required to push changes
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # Fetch all history
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if last commit was version bump
+        id: check_skip
+        run: |
+          LAST_COMMIT_MSG=$(git log -1 --pretty=%B)
+          LAST_COMMIT_AUTHOR=$(git log -1 --pretty=%an)
+
+          echo "Last commit message: $LAST_COMMIT_MSG"
+          echo "Last commit author: $LAST_COMMIT_AUTHOR"
+
+          # Skip if last commit was a version bump from bot
+          if [[ "$LAST_COMMIT_AUTHOR" == "github-actions[bot]" ]] && [[ "$LAST_COMMIT_MSG" == *"Bump Android version"* ]]; then
+            echo "Last commit was a version bump, skipping to prevent infinite loop"
+            echo "should_skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "Proceeding with version bump"
+            echo "should_skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Configure Git
+        if: steps.check_skip.outputs.should_skip != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version in build.gradle
+        if: steps.check_skip.outputs.should_skip != 'true'
+        id: bump_version
+        run: |
+          BUILD_GRADLE="app/build.gradle"
+
+          # Extract current versionCode and versionName
+          CURRENT_VERSION_CODE=$(grep -oP 'versionCode\s+\K\d+' "$BUILD_GRADLE")
+          CURRENT_VERSION_NAME=$(grep -oP 'versionName\s+"\K[^"]+' "$BUILD_GRADLE")
+
+          echo "Current versionCode: $CURRENT_VERSION_CODE"
+          echo "Current versionName: $CURRENT_VERSION_NAME"
+
+          # Bump versionCode by 1
+          NEW_VERSION_CODE=$((CURRENT_VERSION_CODE + 1))
+
+          # Bump versionName (patch version)
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION_NAME"
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION_NAME="${MAJOR}.${MINOR}.${NEW_PATCH}"
+
+          echo "New versionCode: $NEW_VERSION_CODE"
+          echo "New versionName: $NEW_VERSION_NAME"
+
+          # Update build.gradle using sed
+          sed -i "s/versionCode $CURRENT_VERSION_CODE/versionCode $NEW_VERSION_CODE/" "$BUILD_GRADLE"
+          sed -i "s/versionName \"$CURRENT_VERSION_NAME\"/versionName \"$NEW_VERSION_NAME\"/" "$BUILD_GRADLE"
+
+          # Verify changes
+          echo "Updated build.gradle:"
+          grep -A 2 "versionCode\|versionName" "$BUILD_GRADLE" | head -6
+
+          # Export for next steps
+          echo "new_version_code=$NEW_VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "new_version_name=$NEW_VERSION_NAME" >> $GITHUB_OUTPUT
+
+      - name: Check for changes
+        if: steps.check_skip.outputs.should_skip != 'true'
+        id: check_changes
+        run: |
+          if git diff --quiet app/build.gradle; then
+            echo "No version changes detected"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "Version changes detected"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push version bump
+        if: steps.check_skip.outputs.should_skip != 'true' && steps.check_changes.outputs.has_changes == 'true'
+        env:
+          NEW_VERSION_CODE: ${{ steps.bump_version.outputs.new_version_code }}
+          NEW_VERSION_NAME: ${{ steps.bump_version.outputs.new_version_name }}
+        run: |
+          git add app/build.gradle
+          git commit -m "chore: Bump Android version to ${NEW_VERSION_NAME} (${NEW_VERSION_CODE})
+
+          Auto-generated version bump after commit ${{ github.sha }}
+
+          - versionCode: ${NEW_VERSION_CODE}
+          - versionName: ${NEW_VERSION_NAME}
+
+          Workflow: ${{ github.workflow }}
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # Push changes back to main
+          git push origin main
+
+          echo "✓ Version bumped to ${NEW_VERSION_NAME} (code: ${NEW_VERSION_CODE})"
+
+      - name: Summary
+        if: steps.check_skip.outputs.should_skip != 'true' && steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          echo "## Version Bump Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✓ Successfully bumped Android version" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **versionCode**: ${{ steps.bump_version.outputs.new_version_code }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **versionName**: ${{ steps.bump_version.outputs.new_version_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Changes committed and pushed to main branch." >> $GITHUB_STEP_SUMMARY
