@@ -113,6 +113,8 @@
             mitmCache = pkgs.gradle.fetchDeps {
               pkg = apk;
               data = ./deps.json;
+              # Disable bubblewrap sandboxing for GitHub Actions compatibility
+              useBwrap = false;
             };
 
             buildPhase = ''
