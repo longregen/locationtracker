@@ -17,13 +17,13 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v14
+        uses: DeterminateSystems/nix-installer-action@v21
 
       - name: Setup Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@v8
+        uses: DeterminateSystems/magic-nix-cache-action@v13
 
       - name: Build ARM v7 debug APK with Nix environment
         run: |
