@@ -243,6 +243,9 @@ class MainActivity : AppCompatActivity() {
         } else {
             startService(serviceIntent)
         }
+
+        // Schedule periodic checks to ensure service stays running
+        LocationServiceScheduler.scheduleServiceCheck(this)
     }
 
     private fun openMap(latitude: Double, longitude: Double) {
