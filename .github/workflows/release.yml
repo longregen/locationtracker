@@ -1,4 +1,4 @@
-name: Release - Build, Test, and Publish
+name: Release - Build and Publish
 
 on:
   push:
@@ -7,20 +7,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Run E2E tests first to validate before building release
-  e2e-test:
-    name: E2E Tests
-    permissions:
-      contents: write  # Required to checkout code and push screenshot updates
-      pull-requests: write  # Required to create PRs for screenshot updates
-    uses: ./.github/workflows/e2e-test.yml
-    with:
-      artifact-name-prefix: 'release-e2e'
-
-  # Build and sign release APKs only after E2E tests pass
+  # Build and sign release APKs (E2E tests already passed in CI)
   build-release:
     name: Build and Sign Release APKs
-    needs: e2e-test
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -43,39 +32,43 @@ jobs:
             echo "Building manual release: ${VERSION}"
           fi
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'gradle'
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@4d9f0ba0025fe599b4ebab900eb7f3a1d93ef4c2 # v5.0.0
-        with:
-          cache-read-only: false
-          gradle-home-cache-cleanup: true
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@565684385bcd71bad329742eefe8d12f2e765b39 # v13
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Build debug APKs
+      - name: Build debug APKs with Nix
         run: |
-          ./gradlew assembleDebug \
-            --parallel \
-            --build-cache \
-            --configuration-cache \
-            --no-daemon \
-            --stacktrace
+          echo "Building debug APKs using Nix flake environment..."
+          nix develop --command bash -c '
+            export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+            echo "ANDROID_HOME: $ANDROID_HOME"
+            echo "JAVA_HOME: $JAVA_HOME"
 
-      - name: Build release APKs
+            # Build debug APKs for all architectures
+            gradle assembleDebug \
+              --parallel \
+              --build-cache \
+              --configuration-cache \
+              --no-daemon \
+              --stacktrace
+          '
+
+      - name: Build release APKs with Nix
         run: |
-          ./gradlew assembleRelease \
-            --parallel \
-            --build-cache \
-            --configuration-cache \
-            --no-daemon \
-            --stacktrace
+          echo "Building release APKs using Nix flake environment..."
+          nix develop --command bash -c '
+            export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+
+            # Build release APKs for all architectures
+            gradle assembleRelease \
+              --parallel \
+              --build-cache \
+              --configuration-cache \
+              --no-daemon \
+              --stacktrace
+          '
 
       - name: List generated APKs
         run: |
