@@ -43,6 +43,7 @@
           platforms-android-33
           ndk-27-2-12479018
           emulator
+          system-images-android-33-google-apis-x86-64
         ]);
 
         # Build script for armeabi-v7a debug APK
@@ -90,6 +91,159 @@
             find app/build/outputs/apk -name "*.apk" -type f || true
             exit 1
           fi
+        '';
+
+        # E2E test runner script
+        e2eTestScript = pkgs.writeShellScriptBin "run-e2e-tests" ''
+          set -e
+
+          export ANDROID_HOME="${androidSdk}/share/android-sdk"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/27.2.12479018"
+          export JAVA_HOME="${pkgs.jdk17.home}"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/35.0.0:$ANDROID_HOME/emulator:$JAVA_HOME/bin:$PATH"
+
+          echo "=== LocationTracker E2E Test Runner (Nix) ==="
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          echo "JAVA_HOME: $JAVA_HOME"
+          echo ""
+
+          # Build debug and test APKs
+          echo "Building APKs..."
+          gradle assembleDebug assembleDebugAndroidTest \
+            --parallel \
+            --build-cache \
+            --configuration-cache \
+            --no-daemon \
+            --stacktrace
+
+          echo ""
+          echo "=== Creating Android Emulator AVD ==="
+
+          # Create AVD if it doesn't exist
+          AVD_NAME="test_avd_33"
+          if ! avdmanager list avd | grep -q "$AVD_NAME"; then
+            echo "Creating AVD: $AVD_NAME"
+            echo "no" | avdmanager create avd \
+              --force \
+              --name "$AVD_NAME" \
+              --package "system-images;android-33;google_apis;x86_64" \
+              --abi google_apis/x86_64
+          else
+            echo "AVD $AVD_NAME already exists"
+          fi
+
+          echo ""
+          echo "=== Starting Android Emulator ==="
+
+          # Start emulator in background
+          $ANDROID_HOME/emulator/emulator \
+            -avd "$AVD_NAME" \
+            -no-window \
+            -gpu swiftshader_indirect \
+            -noaudio \
+            -no-boot-anim \
+            -camera-back none \
+            -no-snapshot-save &
+
+          EMULATOR_PID=$!
+          echo "Emulator started with PID: $EMULATOR_PID"
+
+          # Wait for device
+          echo "Waiting for device to boot..."
+          adb wait-for-device
+          echo "Device connected"
+
+          # Wait for boot to complete
+          echo "Waiting for boot to complete..."
+          adb shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 2; done'
+          adb shell 'while [ -z "$(pm list packages)" ]; do sleep 1; done'
+          adb shell 'while [ "$(getprop init.svc.bootanim)" != "stopped" ]; do sleep 1; done'
+
+          # Wait for critical services
+          echo "Waiting for services..."
+          for i in {1..30}; do
+            if adb shell service check input 2>/dev/null | grep -q "Service input:"; then
+              echo "Input service ready"
+              break
+            fi
+            echo "Waiting for input service... ($i/30)"
+            sleep 2
+          done
+
+          for i in {1..30}; do
+            if adb shell service check settings 2>/dev/null | grep -q "Service settings:"; then
+              echo "Settings service ready"
+              break
+            fi
+            echo "Waiting for settings service... ($i/30)"
+            sleep 2
+          done
+
+          # Stabilization period
+          echo "Stabilization period..."
+          sleep 5
+
+          echo ""
+          echo "=== Configuring Emulator ==="
+
+          # Disable animations
+          adb shell settings put global window_animation_scale 0.0
+          adb shell settings put global transition_animation_scale 0.0
+          adb shell settings put global animator_duration_scale 0.0
+
+          # Allow mock location
+          adb shell appops set com.locationtracker android:mock_location allow || echo "Mock location permission already set"
+
+          # Set initial location to London
+          echo "Setting initial location to London (51.5074, -0.1278)"
+          adb emu geo fix -0.1278 51.5074
+          sleep 2
+
+          echo ""
+          echo "=== Installing APKs ==="
+
+          adb install -r app/build/outputs/apk/debug/app-x86_64-debug.apk
+          adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+          echo ""
+          echo "=== Granting Permissions ==="
+
+          adb shell pm grant com.locationtracker android.permission.ACCESS_FINE_LOCATION
+          adb shell pm grant com.locationtracker android.permission.ACCESS_COARSE_LOCATION
+          adb shell pm grant com.locationtracker android.permission.POST_NOTIFICATIONS
+          adb shell mkdir -p /sdcard/Pictures
+
+          echo ""
+          echo "=== Running E2E Tests ==="
+
+          mkdir -p test-results
+          adb shell am instrument -w -r -e debug false -e class com.locationtracker.LocationTrackerE2ETest \
+            com.locationtracker.test/androidx.test.runner.AndroidJUnitRunner | tee test-results/test-output.txt
+
+          TEST_EXIT_CODE=''${PIPESTATUS[0]}
+          echo "Test execution completed. Exit code: $TEST_EXIT_CODE"
+
+          echo ""
+          echo "=== Pulling Screenshots ==="
+
+          mkdir -p screenshots
+          adb pull /sdcard/Pictures/ screenshots/ || echo "No screenshots found"
+
+          if [ -d "screenshots/Pictures" ]; then
+            echo "Screenshots captured:"
+            ls -la screenshots/Pictures/
+          else
+            echo "No screenshots directory"
+          fi
+
+          echo ""
+          echo "=== Stopping Emulator ==="
+          kill $EMULATOR_PID 2>/dev/null || true
+
+          echo ""
+          echo "=== E2E Test Run Complete ==="
+          exit $TEST_EXIT_CODE
         '';
 
       in
@@ -159,6 +313,7 @@
             pkgs.jdk17
             pkgs.gradle
             buildScript
+            e2eTestScript
           ];
 
           shellHook = ''
@@ -166,7 +321,7 @@
             export ANDROID_SDK_ROOT="$ANDROID_HOME"
             export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/27.2.12479018"
             export JAVA_HOME="${pkgs.jdk17.home}"
-            export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/35.0.0:$JAVA_HOME/bin:$PATH"
+            export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/35.0.0:$ANDROID_HOME/emulator:$JAVA_HOME/bin:$PATH"
 
             echo "╔══════════════════════════════════════════════════════════════╗"
             echo "║  LocationTracker - Hermetic Android Build Environment       ║"
@@ -178,7 +333,9 @@
             echo ""
             echo "Commands:"
             echo "  build-apk              - Build ARM v7 debug APK (requires network)"
+            echo "  run-e2e-tests          - Run E2E tests with emulator (Nix)"
             echo "  nix build .#apk        - Hermetic build (offline, uses deps.json)"
+            echo "  nix run .#e2e-tests    - Run E2E tests (alternative)"
             echo ""
             echo "Update dependencies:"
             echo "  nix build .#apk.mitmCache.updateScript && ./result"
@@ -193,6 +350,11 @@
           build = {
             type = "app";
             program = "${buildScript}/bin/build-apk";
+          };
+
+          e2e-tests = {
+            type = "app";
+            program = "${e2eTestScript}/bin/run-e2e-tests";
           };
         };
       }

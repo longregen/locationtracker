@@ -25,10 +25,11 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@4d9f0ba0025fe599b4ebab900eb7f3a1d93ef4c2 # v5.0.0
+        with:
+          cache-disabled: true
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -102,113 +103,16 @@ jobs:
       - name: Setup Nix cache
         uses: DeterminateSystems/magic-nix-cache-action@565684385bcd71bad329742eefe8d12f2e765b39 # v13
 
-      - name: Build debug APK and test APK with Nix
-        run: |
-          echo "Building APK using Nix flake environment..."
-          nix develop --command bash -c '
-            export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
-            echo "ANDROID_HOME: $ANDROID_HOME"
-            echo "JAVA_HOME: $JAVA_HOME"
-
-            # Build debug and androidTest APKs
-            gradle assembleDebug assembleDebugAndroidTest \
-              --parallel \
-              --build-cache \
-              --configuration-cache \
-              --no-daemon \
-              --stacktrace
-          '
-
       - name: Enable KVM group perms
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: AVD cache
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
-        id: avd-cache
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-e2e-33-google_apis-x86_64
-
-      - name: Create AVD and generate snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@b530d96654c385303d652368551fb075bc2f0b6b # v2.35.0
-        with:
-          api-level: 33
-          target: google_apis
-          arch: x86_64
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: false
-          script: |
-            echo "Waiting for all Android services to be ready..."
-            adb wait-for-device
-            adb shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 2; done'
-            adb shell 'while [ -z "$(pm list packages)" ]; do sleep 1; done'
-            adb shell 'while [ "$(getprop init.svc.bootanim)" != "stopped" ]; do sleep 1; done'
-            echo "Boot completed. Waiting for input service..."
-            i=0; while [ $i -lt 30 ]; do if adb shell service check input 2>/dev/null | grep -q "Service input:"; then echo "Input service is ready"; break; fi; echo "Waiting for input service... ($i/30)"; sleep 2; i=$((i+1)); done
-            echo "Waiting for settings service..."
-            i=0; while [ $i -lt 30 ]; do if adb shell service check settings 2>/dev/null | grep -q "Service settings:"; then echo "Settings service is ready"; break; fi; echo "Waiting for settings service... ($i/30)"; sleep 2; i=$((i+1)); done
-            echo "Adding 5 second stabilization period..."
-            sleep 5
-            echo "All services ready. Generated AVD snapshot for caching."
-
-      - name: Run E2E tests on Android Emulator
-        uses: reactivecircus/android-emulator-runner@b530d96654c385303d652368551fb075bc2f0b6b # v2.35.0
-        with:
-          api-level: 33
-          target: google_apis
-          arch: x86_64
-          force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-          script: |
-            set -x
-            echo "=== Starting E2E Test Script ==="
-            adb wait-for-device
-            echo "Device connected"
-            adb shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do echo "Waiting for boot..."; sleep 2; done; echo "Boot completed"'
-            adb shell 'while [ -z "$(pm list packages)" ]; do echo "Waiting for package manager..."; sleep 1; done; echo "Package manager ready"'
-            adb shell 'while [ "$(getprop init.svc.bootanim)" != "stopped" ]; do echo "Waiting for bootanim..."; sleep 1; done; echo "Bootanim stopped"'
-            echo "Waiting for input service to be ready..."
-            i=0; while [ $i -lt 30 ]; do if adb shell service check input 2>/dev/null | grep -q "Service input:"; then echo "Input service is ready"; break; fi; echo "Waiting for input service... ($i/30)"; sleep 2; i=$((i+1)); done
-            echo "Waiting for settings service to be ready..."
-            i=0; while [ $i -lt 30 ]; do if adb shell service check settings 2>/dev/null | grep -q "Service settings:"; then echo "Settings service is ready"; break; fi; echo "Waiting for settings service... ($i/30)"; sleep 2; i=$((i+1)); done
-            echo "Adding 5 second stabilization period..."
-            sleep 5
-            echo "Configuring emulator settings..."
-            adb shell settings put global window_animation_scale 0.0
-            adb shell settings put global transition_animation_scale 0.0
-            adb shell settings put global animator_duration_scale 0.0
-            adb shell appops set com.locationtracker android:mock_location allow || echo "Mock location permission already set"
-            echo "Setting initial location to London (51.5074, -0.1278)"
-            adb emu geo fix -0.1278 51.5074
-            sleep 2
-            echo "Installing APKs..."
-            adb install -r app/build/outputs/apk/debug/app-x86_64-debug.apk
-            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-            echo "Granting permissions..."
-            adb shell pm grant com.locationtracker android.permission.ACCESS_FINE_LOCATION
-            adb shell pm grant com.locationtracker android.permission.ACCESS_COARSE_LOCATION
-            adb shell pm grant com.locationtracker android.permission.POST_NOTIFICATIONS
-            adb shell mkdir -p /sdcard/Pictures
-            echo "Running E2E test..."
-            mkdir -p test-results
-            adb shell am instrument -w -r -e debug false -e class com.locationtracker.LocationTrackerE2ETest com.locationtracker.test/androidx.test.runner.AndroidJUnitRunner | tee test-results/test-output.txt
-            TEST_EXIT_CODE=$?
-            echo "Test execution completed. Exit code: $TEST_EXIT_CODE"
-            echo "Pulling screenshots..."
-            mkdir -p screenshots
-            adb pull /sdcard/Pictures/ screenshots/ || echo "No screenshots found"
-            echo "Screenshots captured:"
-            ls -la screenshots/Pictures/ || echo "No screenshots directory"
-            echo "=== E2E Test Script Completed ==="
-            exit $TEST_EXIT_CODE
+      - name: Run E2E tests with Nix
+        run: |
+          echo "Running E2E tests using Nix..."
+          nix run .#e2e-tests
 
       - name: Compare and update reference screenshot
         if: always() && hashFiles('screenshots/Pictures/01_app_launched.png') != ''
