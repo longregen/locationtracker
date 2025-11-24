@@ -8,8 +8,83 @@ on:
   workflow_dispatch:
 
 jobs:
+  codeql-analysis:
+    name: CodeQL Security Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Download and setup CodeQL CLI
+        run: |
+          # Download CodeQL CLI
+          wget -q https://github.com/github/codeql-action/releases/latest/download/codeql-bundle-linux64.tar.gz
+          tar -xzf codeql-bundle-linux64.tar.gz
+          echo "$GITHUB_WORKSPACE/codeql" >> $GITHUB_PATH
+
+      - name: Create CodeQL database
+        run: |
+          codeql database create codeql-db \
+            --language=java \
+            --command="./gradlew clean assembleDebug --no-daemon" \
+            --source-root=.
+
+      - name: Analyze CodeQL database
+        run: |
+          codeql database analyze codeql-db \
+            --format=sarif-latest \
+            --output=codeql-results.sarif \
+            java-security-and-quality
+
+      - name: Upload SARIF to GitHub
+        run: |
+          # Get the commit SHA and ref
+          COMMIT_SHA="${{ github.sha }}"
+          REF="${{ github.ref }}"
+
+          # Upload SARIF file using GitHub API
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/code-scanning/sarifs" \
+            -d @- <<EOF
+          {
+            "commit_sha": "$COMMIT_SHA",
+            "ref": "$REF",
+            "sarif": "$(cat codeql-results.sarif | base64 -w 0)"
+          }
+          EOF
+
+      - name: Upload SARIF as artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: codeql-sarif
+          path: codeql-results.sarif
+          retention-days: 30
+
   build-and-test:
     name: Build APK and Test E2E
+    needs: codeql-analysis
     permissions:
       contents: write  # Required to checkout code and push screenshot updates
       pull-requests: write  # Required to create PRs for screenshot updates
