@@ -172,6 +172,21 @@ jobs:
           if [ -f "$SCREENSHOT_REF" ]; then
             echo "Current reference SHA256: $(sha256sum "$SCREENSHOT_REF" | cut -d' ' -f1)"
             echo "New screenshot SHA256: $(sha256sum "$SCREENSHOT_NEW" | cut -d' ' -f1)"
+
+            # Compare images using SSIM (Structural Similarity Index)
+            # SSIM returns a value between 0 and 1 where 1 means identical
+            echo "Comparing images using SSIM..."
+            SIMILARITY=$(nix run nixpkgs#imagemagick -- compare -metric SSIM "$SCREENSHOT_REF" "$SCREENSHOT_NEW" null: 2>&1 || true)
+            echo "SSIM similarity score: $SIMILARITY"
+
+            # Check if similarity is above 98% threshold (0.98)
+            # Use awk for floating point comparison
+            if echo "$SIMILARITY" | awk '{exit ($1 >= 0.98) ? 0 : 1}'; then
+              echo "✅ Images are 98%+ similar (SSIM=$SIMILARITY), skipping PR creation"
+              exit 0
+            else
+              echo "📸 Images differ significantly (SSIM=$SIMILARITY), will create PR to update reference"
+            fi
           else
             echo "ℹ No reference screenshot found - will create initial version"
           fi
