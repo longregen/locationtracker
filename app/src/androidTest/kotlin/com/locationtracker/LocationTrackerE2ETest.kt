@@ -68,11 +68,12 @@ class LocationTrackerE2ETest {
         // Start the app
         launchApp()
 
+        // Wait for app to fully load before taking screenshot
+        device.waitForIdle(2000)
+        SystemClock.sleep(1000)
+
         // Take initial screenshot
         takeScreenshot("01_app_launched")
-
-        // Wait for app to fully load
-        device.waitForIdle(2000)
 
         println("=== Starting E2E Test ===")
 
