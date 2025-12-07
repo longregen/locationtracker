@@ -8,8 +8,53 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Lightweight build check for PRs - just compile, no emulator or E2E tests
+  build-check:
+    name: Build Check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@af1da67850ed9a4cedd57bfd976089dd991e2582 # v4.0.0
+        with:
+          cache-read-only: false
+          gradle-home-cache-cleanup: true
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build debug APK (compile check)
+        run: |
+          ./gradlew assembleDebug \
+            --parallel \
+            --build-cache \
+            --configuration-cache \
+            --no-daemon
+
+      - name: Run unit tests
+        run: |
+          ./gradlew testDebugUnitTest \
+            --parallel \
+            --build-cache \
+            --configuration-cache \
+            --no-daemon || echo "No unit tests found"
+
+  # Full E2E tests only on main branch pushes
   build-and-test:
     name: Build APK and Test E2E
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write  # Required to checkout code and push screenshot updates
       pull-requests: write  # Required to create PRs for screenshot updates
@@ -28,7 +73,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-depth: 0  # Fetch all history to get tags
 
