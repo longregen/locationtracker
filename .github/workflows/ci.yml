@@ -11,6 +11,8 @@ jobs:
   # Lightweight build check for PRs - just compile, no emulator or E2E tests
   build-check:
     name: Build Check
+    permissions:
+      contents: read
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
