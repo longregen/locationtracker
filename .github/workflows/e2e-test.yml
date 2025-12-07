@@ -118,6 +118,8 @@ jobs:
             adb emu geo fix -0.1278 51.5074
             sleep 2
             echo "Installing APKs..."
+            echo "Uninstalling existing app (if any) to avoid signature conflicts..."
+            adb uninstall com.locationtracker || echo "No existing app to uninstall"
             adb install -r app/build/outputs/apk/debug/app-x86_64-debug.apk
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             echo "Granting permissions..."
