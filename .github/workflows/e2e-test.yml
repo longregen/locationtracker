@@ -174,18 +174,25 @@ jobs:
             echo "New screenshot SHA256: $(sha256sum "$SCREENSHOT_NEW" | cut -d' ' -f1)"
 
             # Compare images using SSIM (Structural Similarity Index)
-            # SSIM returns a value between 0 and 1 where 1 means identical
+            # ImageMagick outputs: "VALUE (NORMALIZED_ERROR)" where lower error = more similar
+            # Example: "32.8711 (0.000501581)" means ~99.95% similar
             echo "Comparing images using SSIM..."
-            SIMILARITY=$(nix run nixpkgs#imagemagick -- compare -metric SSIM "$SCREENSHOT_REF" "$SCREENSHOT_NEW" null: 2>&1 || true)
-            echo "SSIM similarity score: $SIMILARITY"
+            SSIM_OUTPUT=$(nix run nixpkgs#imagemagick -- compare -metric SSIM "$SCREENSHOT_REF" "$SCREENSHOT_NEW" null: 2>&1 || true)
+            echo "SSIM output: $SSIM_OUTPUT"
 
-            # Check if similarity is above 98% threshold (0.98)
-            # Use awk for floating point comparison
-            if echo "$SIMILARITY" | awk '{exit ($1 >= 0.98) ? 0 : 1}'; then
-              echo "✅ Images are 98%+ similar (SSIM=$SIMILARITY), skipping PR creation"
+            # Extract the normalized error from parentheses (e.g., 0.000501581 from "32.8711 (0.000501581)")
+            SSIM_ERROR=$(echo "$SSIM_OUTPUT" | grep -oP '\(\K[0-9.]+(?=\))' || echo "1")
+            echo "SSIM normalized error: $SSIM_ERROR"
+
+            # Check if error is below 2% threshold (0.02) meaning 98%+ similar
+            # Lower error = more similar images
+            if echo "$SSIM_ERROR" | awk '{exit ($1 <= 0.02) ? 0 : 1}'; then
+              SIMILARITY_PCT=$(echo "$SSIM_ERROR" | awk '{printf "%.2f", (1 - $1) * 100}')
+              echo "Images are ${SIMILARITY_PCT}% similar (error=$SSIM_ERROR), skipping PR creation"
               exit 0
             else
-              echo "📸 Images differ significantly (SSIM=$SIMILARITY), will create PR to update reference"
+              SIMILARITY_PCT=$(echo "$SSIM_ERROR" | awk '{printf "%.2f", (1 - $1) * 100}')
+              echo "Images differ significantly (${SIMILARITY_PCT}% similar, error=$SSIM_ERROR), will create PR to update reference"
             fi
           else
             echo "ℹ No reference screenshot found - will create initial version"

@@ -1,4 +1,4 @@
-name: CI - Build and Test
+name: CI - Build, Test, and Release
 
 on:
   push:
@@ -54,30 +54,31 @@ jobs:
             --no-daemon || echo "No unit tests found"
 
   # Full E2E tests only on main branch pushes
-  build-and-test:
-    name: Build APK and Test E2E
+  e2e-test:
+    name: E2E Tests
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
-      contents: write  # Required to checkout code and push screenshot updates
-      pull-requests: write  # Required to create PRs for screenshot updates
+      contents: write
+      pull-requests: write
     uses: ./.github/workflows/e2e-test.yml
     with:
       artifact-name-prefix: 'ci-e2e'
 
-  auto-tag:
-    name: Auto Tag Version
-    needs: build-and-test
-    # Only run on main branch pushes (not PRs)
+  # Build APKs, create tag, and publish draft release
+  build-sign-release:
+    name: Build, Sign, Tag, and Release
+    needs: e2e-test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
-      contents: write  # Required to create tags
+      contents: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
         with:
-          fetch-depth: 0  # Fetch all history to get tags
+          fetch-depth: 0
 
       - name: Configure Git
         run: |
@@ -85,12 +86,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Get latest tag and bump version
-        id: bump_version
+        id: version
         run: |
-          # Fetch all tags
           git fetch --tags
 
-          # Get the latest tag (defaults to v0.0.0 if no tags exist)
           LATEST_TAG=$(git tag -l "v*.*.*" | sort -V | tail -n1)
 
           if [ -z "$LATEST_TAG" ]; then
@@ -98,25 +97,99 @@ jobs:
             NEW_TAG="v1.0.0"
           else
             echo "Latest tag: $LATEST_TAG"
-
-            # Remove 'v' prefix and split version
             VERSION=${LATEST_TAG#v}
             IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-
-            # Bump patch version by default
-            # You can customize this logic to check commit messages for
-            # keywords like [major], [minor], or [patch]
             PATCH=$((PATCH + 1))
-
             NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
           fi
 
           echo "New tag: $NEW_TAG"
           echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
 
+      - name: Set up JDK 17
+        uses: actions/setup-java@f2beeb24e141e01a676f977032f5a29d81c9e27e # v5.1.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@4d9f0ba0025fe599b4ebab900eb7f3a1d93ef4c2 # v5.0.0
+        with:
+          cache-read-only: false
+          gradle-home-cache-cleanup: true
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build debug APKs
+        run: |
+          ./gradlew assembleDebug \
+            --parallel \
+            --build-cache \
+            --configuration-cache \
+            --no-daemon \
+            --stacktrace
+
+      - name: Build release APKs
+        run: |
+          ./gradlew assembleRelease \
+            --parallel \
+            --build-cache \
+            --configuration-cache \
+            --no-daemon \
+            --stacktrace
+
+      - name: List generated APKs
+        run: |
+          echo "Generated Debug APKs:"
+          find app/build/outputs/apk/debug -name "*.apk" -exec ls -lh {} \;
+          echo "Generated Release APKs:"
+          find app/build/outputs/apk/release -name "*.apk" -exec ls -lh {} \;
+
+      - name: Decode and setup keystore
+        run: |
+          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+
+      - name: Sign release APKs
+        run: |
+          cd app/build/outputs/apk/release
+          for apk in *.apk; do
+            echo "Signing $apk..."
+            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+              -keystore $GITHUB_WORKSPACE/release.keystore \
+              -storepass "${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" \
+              "$apk" "${{ secrets.RELEASE_KEY_ALIAS }}"
+          done
+          ls -lh
+
+      - name: Rename debug APKs with version
+        run: |
+          VERSION="${{ steps.version.outputs.new_tag }}"
+          cd app/build/outputs/apk/debug
+          for apk in *.apk; do
+            # Extract architecture from filename (e.g., app-arm64-v8a-debug.apk -> arm64-v8a)
+            ARCH=$(echo "$apk" | sed -E 's/app-(.+)-debug\.apk/\1/')
+            mv "$apk" "LocationTracker-${VERSION}-DEBUG-${ARCH}.apk"
+          done
+          ls -lh
+
+      - name: Rename release APKs with version
+        run: |
+          VERSION="${{ steps.version.outputs.new_tag }}"
+          cd app/build/outputs/apk/release
+          for apk in *.apk; do
+            # Extract architecture from filename (e.g., app-arm64-v8a-release-unsigned.apk -> arm64-v8a)
+            ARCH=$(echo "$apk" | sed -E 's/app-(.+)-release-unsigned\.apk/\1/')
+            mv "$apk" "LocationTracker-${VERSION}-${ARCH}.apk"
+          done
+          ls -lh
+
       - name: Create and push tag
         env:
-          NEW_TAG: ${{ steps.bump_version.outputs.new_tag }}
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
         run: |
           git tag -a "$NEW_TAG" -m "Auto-generated tag after successful build and e2e tests
 
@@ -126,6 +199,16 @@ jobs:
           Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
           git push origin "$NEW_TAG"
+          echo "Created and pushed tag: $NEW_TAG"
 
-          echo "✓ Created and pushed tag: $NEW_TAG"
-          echo "This will trigger the release workflow to build signed APKs"
+      - name: Create Draft Pre-Release
+        uses: softprops/action-gh-release@5be0e66d93ac7ed76da52eca8bb058f665c3a5fe # v2
+        with:
+          tag_name: ${{ steps.version.outputs.new_tag }}
+          draft: true
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+          token: ${{ secrets.GITHUB_TOKEN }}
