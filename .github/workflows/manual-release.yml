@@ -106,12 +106,9 @@ jobs:
           NEW_VERSION_NAME: ${{ steps.bump_version.outputs.new_version_name }}
         run: |
           git add app/build.gradle
-          git commit -m "chore: Bump Android version to ${NEW_VERSION_NAME} (${NEW_VERSION_CODE})
+          git commit -m "release: v${NEW_VERSION_NAME}
 
-          Auto-generated version bump for release.
-
-          - versionCode: ${NEW_VERSION_CODE}
-          - versionName: ${NEW_VERSION_NAME}
+          Bump Android version to ${NEW_VERSION_NAME} (code: ${NEW_VERSION_CODE})
 
           Workflow: ${{ github.workflow }}
           Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -131,7 +128,7 @@ jobs:
           BRANCH_NAME: ${{ steps.create_branch.outputs.branch_name }}
         run: |
           PR_URL=$(gh pr create \
-            --title "chore: Release v${NEW_VERSION_NAME}" \
+            --title "release: v${NEW_VERSION_NAME}" \
             --body "## Release v${NEW_VERSION_NAME}
 
           Automated version bump for release.
