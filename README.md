@@ -1,89 +1,46 @@
 # LocationTracker
 
-A lightweight Android app for opportunistic GPS location tracking with minimal battery drain.
+Passive GPS location tracking for Android. Records where you've been without active polling.
 
-## Features
+## Highlights
 
-- **Opportunistic GPS Tracking**: Uses Android's PASSIVE_PROVIDER to piggyback on other apps' location requests
-- **Local SQLite Storage**: All data stored locally, no internet required
-- **Smart Location Grouping**: Coordinates within 100m radius are grouped together
-- **GPS Status Indicator**: Shows last GPS update time
-- **Time Spent Tracking**: Calculates duration at each location
-- **Last 10 Locations**: Displays recent grouped locations with visit counts
-- **JSON Export**: Export all location data with timestamps
-- **Map Integration**: Open locations in external map apps
-- **Material 3 Design**: Modern UI with dark/light theme support
-- **Battery Optimized**: Minimal battery drain through passive location updates
+- Piggybacks on other apps' location requests via Android's `PASSIVE_PROVIDER`
+- Groups nearby coordinates (100m radius) into single locations
+- Stores everything locally in SQLite — no network required
+- Export to JSON
 
-## Technical Stack
+## How it Works
 
-- **Language**: Kotlin 2.2.21
-- **UI**: XML layouts with Material 3 (Material Design Components)
-- **Database**: SQLite with custom helper
-- **Min SDK**: 26 (Android 8.0)
-- **Target SDK**: 36
-- **Architecture**: MVVM-lite with View Binding
+The app runs a foreground service that listens for location updates requested by other apps. When a new coordinate comes in, it either creates a new location entry or merges it with an existing one if within 100 meters (Haversine distance). Visit count, first visit, and last visit times are tracked for each location.
 
-## Build
+## Installation
 
-### Prerequisites
+Download the APK for your architecture from [Releases](../../releases):
+- `arm64-v8a` — most modern phones
+- `armeabi-v7a` — older 32-bit ARM devices
+- `x86_64` — emulators, Chromebooks
 
-- JDK 17
-- Android SDK with API 36
-- Gradle 8.13 (included via wrapper)
+Grant location and notification permissions when prompted.
 
-### Building APKs
+## Building from Source
+
+Requires JDK 17 and Android SDK 36.
 
 ```bash
 ./gradlew assembleDebug
 ```
 
-This generates platform-specific APKs for:
-- `armeabi-v7a` - 32-bit ARM devices
-- `arm64-v8a` - 64-bit ARM devices (most modern phones)
-- `x86_64` - Intel/AMD 64-bit (emulators, Chromebooks)
-- `universal` - All platforms combined
+APKs output to `app/build/outputs/apk/debug/`
 
-APKs will be in `app/build/outputs/apk/debug/`
+## Technical Details
 
-### Release Build
-
-```bash
-./gradlew assembleRelease
-```
-
-## Installation
-
-1. Download the appropriate APK for your device architecture
-2. Enable "Install from Unknown Sources" in Android Settings
-3. Install the APK
-4. Grant location and notification permissions when prompted
-
-## Permissions
-
-- `ACCESS_FINE_LOCATION` - For precise GPS coordinates
-- `ACCESS_COARSE_LOCATION` - For approximate location
-- `FOREGROUND_SERVICE` - For background location tracking
-- `FOREGROUND_SERVICE_LOCATION` - Required for location service type
-- `POST_NOTIFICATIONS` - For Android 13+ notification support
-
-## Architecture
-
-### Components
-
-- **MainActivity**: Main UI with RecyclerView for locations
-- **LocationService**: Foreground service for passive location updates
-- **DatabaseHelper**: SQLite operations with location grouping logic
-- **LocationAdapter**: RecyclerView adapter with DiffUtil
-- **LocationData**: Data class for location entities
-
-### Location Grouping Algorithm
-
-Locations are grouped using the Haversine formula:
-- Radius: 100 meters
-- New locations within radius update existing entry
-- Tracks first visit, last visit, and visit count
-- Calculates time spent (last visit - first visit)
+| | |
+|---|---|
+| Language | Kotlin |
+| Min SDK | 26 (Android 8.0) |
+| Target SDK | 36 |
+| UI | XML layouts, Material 3 |
+| Database | SQLite |
 
 ### Database Schema
 
@@ -98,7 +55,7 @@ CREATE TABLE locations (
 )
 ```
 
-## JSON Export Format
+### Export Format
 
 ```json
 [
@@ -113,65 +70,14 @@ CREATE TABLE locations (
 ]
 ```
 
-## Development Decisions
+## Why These Choices
 
-### Why XML Layouts Instead of Jetpack Compose?
+**Passive location provider** — No battery drain from active GPS polling. Updates come opportunistically when other apps request location.
 
-- **Size**: XML layouts with Material 3 produce smaller APKs than Jetpack Compose
-- **Simplicity**: Straightforward UI doesn't need Compose complexity
-- **Battery**: Lighter framework = less overhead
+**XML over Jetpack Compose** — Smaller APK size. The UI is simple enough that Compose adds unnecessary overhead.
 
-### Why Passive Location Provider?
-
-- **Battery**: No active GPS polling
-- **Opportunistic**: Uses location updates from other apps
-- **Sufficient**: For tracking visited places, not real-time navigation
-
-### Why SQLite Instead of Room?
-
-- **Size**: Room adds additional overhead to APK size
-- **Simplicity**: Direct SQL is sufficient for this use case
-- **Control**: Fine-grained control over queries and migrations
-
-## CI/CD
-
-GitHub Actions workflows:
-
-### Build and Test Workflow
-Automatically runs on push and pull requests:
-- Builds debug APK and test APK
-- Runs end-to-end tests on Android API 33 emulator (x86_64)
-- Uses Ubuntu latest with JDK 17
-
-### E2E Test Workflow
-Automated end-to-end testing on Android emulator:
-- Tests location tracking with mock GPS coordinates
-- Simulates multiple locations (London → Paris → London)
-- Validates UI interactions (export JSON, map integration)
-- Captures screenshots at each test step
-- Uploads test results and screenshots as artifacts
-
-The E2E test validates:
-1. App launch and permissions
-2. Location tracking with London coordinates (51.5074, -0.1278)
-3. Location change to Paris (48.8566, 2.3522)
-4. Location change back to London
-5. Export JSON functionality
-6. Map integration (geo intent)
+**SQLite over Room** — Direct SQL keeps the APK smaller and provides explicit control over queries.
 
 ## License
 
-This project is provided as-is for educational and personal use.
-
-## Version History
-
-### v1.0.0 (2024-11-11)
-- Initial release
-- Opportunistic GPS tracking
-- Location grouping (100m radius)
-- SQLite storage
-- GPS status indicator
-- Time spent tracking
-- JSON export
-- Map integration
-- Material 3 UI
+Provided as-is for personal use.
