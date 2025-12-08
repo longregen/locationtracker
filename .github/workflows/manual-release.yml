@@ -15,13 +15,16 @@ on:
 
 jobs:
   bump-version:
-    name: Bump Version
+    name: Bump Version and Create PR
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     outputs:
       new_version_code: ${{ steps.bump_version.outputs.new_version_code }}
       new_version_name: ${{ steps.bump_version.outputs.new_version_name }}
+      pr_number: ${{ steps.create_pr.outputs.pr_number }}
+      branch_name: ${{ steps.create_branch.outputs.branch_name }}
 
     steps:
       - name: Checkout code
@@ -87,7 +90,17 @@ jobs:
           echo "new_version_code=$NEW_VERSION_CODE" >> $GITHUB_OUTPUT
           echo "new_version_name=$NEW_VERSION_NAME" >> $GITHUB_OUTPUT
 
-      - name: Commit and push version bump
+      - name: Create release branch
+        id: create_branch
+        env:
+          NEW_VERSION_NAME: ${{ steps.bump_version.outputs.new_version_name }}
+        run: |
+          BRANCH_NAME="release/v${NEW_VERSION_NAME}"
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+
+          git checkout -b "$BRANCH_NAME"
+
+      - name: Commit version bump
         env:
           NEW_VERSION_CODE: ${{ steps.bump_version.outputs.new_version_code }}
           NEW_VERSION_NAME: ${{ steps.bump_version.outputs.new_version_name }}
@@ -103,153 +116,58 @@ jobs:
           Workflow: ${{ github.workflow }}
           Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          git push origin main
-
-  e2e-test:
-    name: E2E Tests
-    needs: bump-version
-    permissions:
-      contents: write
-      pull-requests: write
-    uses: ./.github/workflows/e2e-test.yml
-    with:
-      artifact-name-prefix: 'release-e2e'
-
-  build-sign-release:
-    name: Build, Sign, Tag, and Release
-    needs: [bump-version, e2e-test]
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-        with:
-          fetch-depth: 0
-          ref: main  # Ensure we get the latest with version bump
-
-      - name: Pull latest changes
-        run: git pull origin main
-
-      - name: Set version tag
-        id: version
+      - name: Push branch
         env:
-          NEW_VERSION_NAME: ${{ needs.bump-version.outputs.new_version_name }}
+          BRANCH_NAME: ${{ steps.create_branch.outputs.branch_name }}
         run: |
-          NEW_TAG="v${NEW_VERSION_NAME}"
-          echo "New tag: $NEW_TAG"
-          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          git push -u origin "$BRANCH_NAME"
 
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@f2beeb24e141e01a676f977032f5a29d81c9e27e # v5.1.0
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'gradle'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@4d9f0ba0025fe599b4ebab900eb7f3a1d93ef4c2 # v5.0.0
-        with:
-          cache-read-only: false
-          gradle-home-cache-cleanup: true
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Build debug APKs
-        run: |
-          ./gradlew assembleDebug \
-            --parallel \
-            --build-cache \
-            --configuration-cache \
-            --no-daemon \
-            --stacktrace
-
-      - name: Build release APKs
-        run: |
-          ./gradlew assembleRelease \
-            --parallel \
-            --build-cache \
-            --configuration-cache \
-            --no-daemon \
-            --stacktrace
-
-      - name: List generated APKs
-        run: |
-          echo "Generated Debug APKs:"
-          find app/build/outputs/apk/debug -name "*.apk" -exec ls -lh {} \;
-          echo "Generated Release APKs:"
-          find app/build/outputs/apk/release -name "*.apk" -exec ls -lh {} \;
-
-      - name: Decode and setup keystore
-        run: |
-          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+      - name: Create Pull Request
+        id: create_pr
         env:
-          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
-
-      - name: Sign release APKs
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_VERSION_CODE: ${{ steps.bump_version.outputs.new_version_code }}
+          NEW_VERSION_NAME: ${{ steps.bump_version.outputs.new_version_name }}
+          BRANCH_NAME: ${{ steps.create_branch.outputs.branch_name }}
         run: |
-          cd app/build/outputs/apk/release
-          for apk in *.apk; do
-            echo "Signing $apk..."
-            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-              -keystore $GITHUB_WORKSPACE/release.keystore \
-              -storepass "${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" \
-              "$apk" "${{ secrets.RELEASE_KEY_ALIAS }}"
-          done
-          ls -lh
+          PR_URL=$(gh pr create \
+            --title "chore: Release v${NEW_VERSION_NAME}" \
+            --body "## Release v${NEW_VERSION_NAME}
 
-      - name: Rename debug APKs with version
-        run: |
-          VERSION="${{ steps.version.outputs.new_tag }}"
-          cd app/build/outputs/apk/debug
-          for apk in *.apk; do
-            # Extract architecture from filename (e.g., app-arm64-v8a-debug.apk -> arm64-v8a)
-            ARCH=$(echo "$apk" | sed -E 's/app-(.+)-debug\.apk/\1/')
-            mv "$apk" "LocationTracker-${VERSION}-DEBUG-${ARCH}.apk"
-          done
-          ls -lh
+          Automated version bump for release.
 
-      - name: Rename release APKs with version
-        run: |
-          VERSION="${{ steps.version.outputs.new_tag }}"
-          cd app/build/outputs/apk/release
-          for apk in *.apk; do
-            # Extract architecture from filename (e.g., app-arm64-v8a-release-unsigned.apk -> arm64-v8a)
-            ARCH=$(echo "$apk" | sed -E 's/app-(.+)-release-unsigned\.apk/\1/')
-            mv "$apk" "LocationTracker-${VERSION}-${ARCH}.apk"
-          done
-          ls -lh
+          **Version Changes:**
+          - **versionCode**: ${NEW_VERSION_CODE}
+          - **versionName**: ${NEW_VERSION_NAME}
 
-      - name: Create and push tag
+          **Triggered by:** @${{ github.actor }}
+          **Workflow run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          ---
+          ⚠️ **Merge this PR to continue with the release build.**" \
+            --base main \
+            --head "$BRANCH_NAME")
+
+          PR_NUMBER=$(echo "$PR_URL" | grep -oP '\d+$')
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "Created PR #$PR_NUMBER: $PR_URL"
+
+      - name: Enable auto-merge
         env:
-          NEW_TAG: ${{ steps.version.outputs.new_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.create_pr.outputs.pr_number }}
         run: |
-          git tag -a "$NEW_TAG" -m "Release ${NEW_TAG}
+          gh pr merge "$PR_NUMBER" --auto --squash || echo "Auto-merge not available, PR requires manual merge"
 
-          Workflow: ${{ github.workflow }}
-          Run ID: ${{ github.run_id }}
-          Commit: ${{ github.sha }}
-          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-          git push origin "$NEW_TAG"
-          echo "Created and pushed tag: $NEW_TAG"
-
-      - name: Create Draft Pre-Release
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
-        with:
-          tag_name: ${{ steps.version.outputs.new_tag }}
-          draft: true
-          prerelease: true
-          generate_release_notes: true
-          files: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Summary
+        env:
+          PR_NUMBER: ${{ steps.create_pr.outputs.pr_number }}
+          NEW_VERSION_NAME: ${{ steps.bump_version.outputs.new_version_name }}
+        run: |
+          echo "## Release v${NEW_VERSION_NAME} Prepared" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ PR #${PR_NUMBER} created with version bump" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next steps:**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Merge the PR (auto-merge enabled if available)" >> $GITHUB_STEP_SUMMARY
+          echo "2. The release will be built automatically after merge" >> $GITHUB_STEP_SUMMARY
