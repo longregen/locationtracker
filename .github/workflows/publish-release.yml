@@ -62,44 +62,29 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Set up JDK 17
+      - name: Install Nix
         if: steps.check_tag.outputs.tag_exists != 'true'
-        uses: actions/setup-java@f2beeb24e141e01a676f977032f5a29d81c9e27e # v5.1.0
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'gradle'
+        uses: DeterminateSystems/nix-installer-action@c5a866b6ab867e88becbed4467b93592bce69f8a # v21
 
-      - name: Setup Gradle
+      - name: Setup Nix cache
         if: steps.check_tag.outputs.tag_exists != 'true'
-        uses: gradle/actions/setup-gradle@4d9f0ba0025fe599b4ebab900eb7f3a1d93ef4c2 # v5.0.0
-        with:
-          cache-read-only: false
-          gradle-home-cache-cleanup: true
-
-      - name: Grant execute permission for gradlew
-        if: steps.check_tag.outputs.tag_exists != 'true'
-        run: chmod +x gradlew
+        uses: DeterminateSystems/magic-nix-cache-action@565684385bcd71bad329742eefe8d12f2e765b39 # v13
 
       - name: Build debug APKs
         if: steps.check_tag.outputs.tag_exists != 'true'
         run: |
-          ./gradlew assembleDebug \
-            --parallel \
-            --build-cache \
-            --configuration-cache \
-            --no-daemon \
-            --stacktrace
+          nix develop --command bash -c '
+            export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+            gradle assembleDebug --no-daemon --stacktrace
+          '
 
       - name: Build release APKs
         if: steps.check_tag.outputs.tag_exists != 'true'
         run: |
-          ./gradlew assembleRelease \
-            --parallel \
-            --build-cache \
-            --configuration-cache \
-            --no-daemon \
-            --stacktrace
+          nix develop --command bash -c '
+            export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+            gradle assembleRelease --no-daemon --stacktrace
+          '
 
       - name: List generated APKs
         if: steps.check_tag.outputs.tag_exists != 'true'
