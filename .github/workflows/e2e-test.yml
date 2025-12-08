@@ -174,15 +174,26 @@ jobs:
             echo "New screenshot SHA256: $(sha256sum "$SCREENSHOT_NEW" | cut -d' ' -f1)"
 
             # Compare images using SSIM (Structural Similarity Index)
-            # ImageMagick outputs: "VALUE (NORMALIZED_ERROR)" where lower error = more similar
-            # Example: "32.8711 (0.000501581)" means ~99.95% similar
+            # SSIM output format varies by ImageMagick version:
+            # - Newer versions: "VALUE (NORMALIZED)" e.g., "0 (0)" for identical, higher = more different
+            # - Some versions: just a decimal like "0.998" where 1 = identical
             echo "Comparing images using SSIM..."
             SSIM_OUTPUT=$(nix run nixpkgs#imagemagick -- compare -metric SSIM "$SCREENSHOT_REF" "$SCREENSHOT_NEW" null: 2>&1 || true)
             echo "SSIM output: $SSIM_OUTPUT"
 
-            # Extract the normalized error from parentheses (e.g., 0.000501581 from "32.8711 (0.000501581)")
-            SSIM_ERROR=$(echo "$SSIM_OUTPUT" | grep -oP '\(\K[0-9.]+(?=\))' || echo "1")
-            echo "SSIM normalized error: $SSIM_ERROR"
+            # Try to extract normalized error from parentheses first (format: "VALUE (NORMALIZED)")
+            # If that fails, parse the first number directly
+            if echo "$SSIM_OUTPUT" | grep -q '('; then
+              # Format: "VALUE (NORMALIZED)" - extract from parentheses (0 = identical, higher = different)
+              SSIM_ERROR=$(echo "$SSIM_OUTPUT" | sed 's/.*(\([0-9.]*\)).*/\1/')
+              echo "SSIM error (from parentheses): $SSIM_ERROR"
+            else
+              # Format: single value like "0.998" (1 = identical, lower = different)
+              # Convert to error: error = 1 - value
+              SSIM_VALUE=$(echo "$SSIM_OUTPUT" | grep -oE '^[0-9.]+' | head -1)
+              SSIM_ERROR=$(echo "$SSIM_VALUE" | awk '{printf "%.6f", 1 - $1}')
+              echo "SSIM value: $SSIM_VALUE, error (1 - value): $SSIM_ERROR"
+            fi
 
             # Check if error is below 2% threshold (0.02) meaning 98%+ similar
             # Lower error = more similar images
