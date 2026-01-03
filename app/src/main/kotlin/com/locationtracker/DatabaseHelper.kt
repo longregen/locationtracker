@@ -10,7 +10,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
 
     companion object {
         private const val DATABASE_NAME = "locations.db"
-        private const val DATABASE_VERSION = 4
+        private const val DATABASE_VERSION = 5
 
         private const val TABLE_LOCATIONS = "locations"
         private const val COLUMN_ID = "id"
@@ -35,6 +35,9 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         private const val COLUMN_NAME = "name"
 
         private const val LOCATION_THRESHOLD_METERS = 100.0
+
+        // ~100m at equator is approximately 0.0009 degrees
+        private const val LOCATION_THRESHOLD_DEGREES = 0.0009
 
         private const val PREFS_NAME = "LocationTrackerPrefs"
         private const val KEY_LAST_GPS_UPDATE = "last_gps_update"
@@ -112,6 +115,13 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
             """.trimIndent()
             db.execSQL(createRawLocationsTable)
         }
+        if (oldVersion < 5) {
+            // Create indexes for performance optimization
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_locations_timestamp ON $TABLE_LOCATIONS($COLUMN_TIMESTAMP DESC)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_locations_coords ON $TABLE_LOCATIONS($COLUMN_LATITUDE, $COLUMN_LONGITUDE)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_raw_timestamp ON $TABLE_RAW_LOCATIONS($COLUMN_RAW_TIMESTAMP DESC)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_location_names_coords ON $TABLE_LOCATION_NAMES($COLUMN_NAME_LATITUDE, $COLUMN_NAME_LONGITUDE)")
+        }
     }
 
     fun insertOrUpdateLocation(latitude: Double, longitude: Double, timestamp: Long, accuracy: Float? = null) {
@@ -161,7 +171,22 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
 
     private fun findNearbyLocation(latitude: Double, longitude: Double): LocationData? {
         val db = readableDatabase
-        val cursor = db.query(TABLE_LOCATIONS, null, null, null, null, null, null)
+
+        // Use bounding box to pre-filter candidates
+        val latMin = latitude - LOCATION_THRESHOLD_DEGREES
+        val latMax = latitude + LOCATION_THRESHOLD_DEGREES
+        val lonMin = longitude - LOCATION_THRESHOLD_DEGREES
+        val lonMax = longitude + LOCATION_THRESHOLD_DEGREES
+
+        val cursor = db.query(
+            TABLE_LOCATIONS,
+            null,
+            "$COLUMN_LATITUDE BETWEEN ? AND ? AND $COLUMN_LONGITUDE BETWEEN ? AND ?",
+            arrayOf(latMin.toString(), latMax.toString(), lonMin.toString(), lonMax.toString()),
+            null,
+            null,
+            null
+        )
 
         var nearbyLocation: LocationData? = null
 
@@ -198,15 +223,21 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         val allLocations = mutableListOf<LocationData>()
         val db = readableDatabase
 
-        val cursor = db.query(
-            TABLE_LOCATIONS,
-            null,
-            null,
-            null,
-            null,
-            null,
-            "$COLUMN_TIMESTAMP DESC"
-        )
+        // Use LEFT JOIN with location_names to avoid N+1 queries
+        // The join uses approximate bounding box matching (within ~100m)
+        val query = """
+            SELECT l.$COLUMN_ID, l.$COLUMN_LATITUDE, l.$COLUMN_LONGITUDE,
+                   l.$COLUMN_TIMESTAMP, l.$COLUMN_FIRST_VISIT, l.$COLUMN_VISIT_COUNT,
+                   l.$COLUMN_ACCURACY, ln.$COLUMN_NAME
+            FROM $TABLE_LOCATIONS l
+            LEFT JOIN $TABLE_LOCATION_NAMES ln ON (
+                ABS(l.$COLUMN_LATITUDE - ln.$COLUMN_NAME_LATITUDE) < $LOCATION_THRESHOLD_DEGREES
+                AND ABS(l.$COLUMN_LONGITUDE - ln.$COLUMN_NAME_LONGITUDE) < $LOCATION_THRESHOLD_DEGREES
+            )
+            ORDER BY l.$COLUMN_TIMESTAMP DESC
+        """.trimIndent()
+
+        val cursor = db.rawQuery(query, null)
 
         if (cursor.moveToFirst()) {
             do {
@@ -218,7 +249,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
                 val visitCount = cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_VISIT_COUNT))
                 val accuracyIndex = cursor.getColumnIndexOrThrow(COLUMN_ACCURACY)
                 val accuracy = if (cursor.isNull(accuracyIndex)) null else cursor.getFloat(accuracyIndex)
-                val name = findLocationName(latitude, longitude)
+                val nameIndex = cursor.getColumnIndexOrThrow(COLUMN_NAME)
+                val name = if (cursor.isNull(nameIndex)) null else cursor.getString(nameIndex)
 
                 allLocations.add(LocationData(id, latitude, longitude, timestamp, firstVisit, visitCount, accuracy, name))
             } while (cursor.moveToNext())
@@ -234,15 +266,21 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         val allLocations = mutableListOf<LocationData>()
         val db = readableDatabase
 
-        val cursor = db.query(
-            TABLE_LOCATIONS,
-            null,
-            null,
-            null,
-            null,
-            null,
-            "$COLUMN_TIMESTAMP DESC"
-        )
+        // Use LEFT JOIN with location_names to avoid N+1 queries
+        // The join uses approximate bounding box matching (within ~100m)
+        val query = """
+            SELECT l.$COLUMN_ID, l.$COLUMN_LATITUDE, l.$COLUMN_LONGITUDE,
+                   l.$COLUMN_TIMESTAMP, l.$COLUMN_FIRST_VISIT, l.$COLUMN_VISIT_COUNT,
+                   l.$COLUMN_ACCURACY, ln.$COLUMN_NAME
+            FROM $TABLE_LOCATIONS l
+            LEFT JOIN $TABLE_LOCATION_NAMES ln ON (
+                ABS(l.$COLUMN_LATITUDE - ln.$COLUMN_NAME_LATITUDE) < $LOCATION_THRESHOLD_DEGREES
+                AND ABS(l.$COLUMN_LONGITUDE - ln.$COLUMN_NAME_LONGITUDE) < $LOCATION_THRESHOLD_DEGREES
+            )
+            ORDER BY l.$COLUMN_TIMESTAMP DESC
+        """.trimIndent()
+
+        val cursor = db.rawQuery(query, null)
 
         if (cursor.moveToFirst()) {
             do {
@@ -254,7 +292,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
                 val visitCount = cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_VISIT_COUNT))
                 val accuracyIndex = cursor.getColumnIndexOrThrow(COLUMN_ACCURACY)
                 val accuracy = if (cursor.isNull(accuracyIndex)) null else cursor.getFloat(accuracyIndex)
-                val name = findLocationName(latitude, longitude)
+                val nameIndex = cursor.getColumnIndexOrThrow(COLUMN_NAME)
+                val name = if (cursor.isNull(nameIndex)) null else cursor.getString(nameIndex)
 
                 allLocations.add(LocationData(id, latitude, longitude, timestamp, firstVisit, visitCount, accuracy, name))
             } while (cursor.moveToNext())
@@ -341,7 +380,22 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
     // Find name for a location within threshold
     private fun findLocationName(latitude: Double, longitude: Double): String? {
         val db = readableDatabase
-        val cursor = db.query(TABLE_LOCATION_NAMES, null, null, null, null, null, null)
+
+        // Use bounding box to pre-filter candidates
+        val latMin = latitude - LOCATION_THRESHOLD_DEGREES
+        val latMax = latitude + LOCATION_THRESHOLD_DEGREES
+        val lonMin = longitude - LOCATION_THRESHOLD_DEGREES
+        val lonMax = longitude + LOCATION_THRESHOLD_DEGREES
+
+        val cursor = db.query(
+            TABLE_LOCATION_NAMES,
+            null,
+            "$COLUMN_NAME_LATITUDE BETWEEN ? AND ? AND $COLUMN_NAME_LONGITUDE BETWEEN ? AND ?",
+            arrayOf(latMin.toString(), latMax.toString(), lonMin.toString(), lonMax.toString()),
+            null,
+            null,
+            null
+        )
 
         var name: String? = null
 
@@ -368,8 +422,22 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
     fun setLocationName(latitude: Double, longitude: Double, name: String) {
         val db = writableDatabase
 
+        // Use bounding box to pre-filter candidates
+        val latMin = latitude - LOCATION_THRESHOLD_DEGREES
+        val latMax = latitude + LOCATION_THRESHOLD_DEGREES
+        val lonMin = longitude - LOCATION_THRESHOLD_DEGREES
+        val lonMax = longitude + LOCATION_THRESHOLD_DEGREES
+
         // Check if there's already a name nearby
-        val cursor = db.query(TABLE_LOCATION_NAMES, null, null, null, null, null, null)
+        val cursor = db.query(
+            TABLE_LOCATION_NAMES,
+            null,
+            "$COLUMN_NAME_LATITUDE BETWEEN ? AND ? AND $COLUMN_NAME_LONGITUDE BETWEEN ? AND ?",
+            arrayOf(latMin.toString(), latMax.toString(), lonMin.toString(), lonMax.toString()),
+            null,
+            null,
+            null
+        )
 
         var existingId: Long? = null
 
@@ -411,7 +479,22 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
     // Remove name for a location
     fun removeLocationName(latitude: Double, longitude: Double) {
         val db = writableDatabase
-        val cursor = db.query(TABLE_LOCATION_NAMES, null, null, null, null, null, null)
+
+        // Use bounding box to pre-filter candidates
+        val latMin = latitude - LOCATION_THRESHOLD_DEGREES
+        val latMax = latitude + LOCATION_THRESHOLD_DEGREES
+        val lonMin = longitude - LOCATION_THRESHOLD_DEGREES
+        val lonMax = longitude + LOCATION_THRESHOLD_DEGREES
+
+        val cursor = db.query(
+            TABLE_LOCATION_NAMES,
+            null,
+            "$COLUMN_NAME_LATITUDE BETWEEN ? AND ? AND $COLUMN_NAME_LONGITUDE BETWEEN ? AND ?",
+            arrayOf(latMin.toString(), latMax.toString(), lonMin.toString(), lonMax.toString()),
+            null,
+            null,
+            null
+        )
 
         var idToDelete: Long? = null
 
@@ -434,5 +517,40 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         if (idToDelete != null) {
             db.delete(TABLE_LOCATION_NAMES, "$COLUMN_NAME_ID = ?", arrayOf(idToDelete.toString()))
         }
+    }
+
+    // Get raw GPS readings from the last 24 hours, ordered chronologically (oldest first)
+    fun getRawLocationsLast24Hours(): List<RawLocationData> {
+        val locations = mutableListOf<RawLocationData>()
+        val db = readableDatabase
+
+        // Calculate timestamp for 24 hours ago
+        val twentyFourHoursAgo = System.currentTimeMillis() - (24 * 60 * 60 * 1000)
+
+        val cursor = db.query(
+            TABLE_RAW_LOCATIONS,
+            null,
+            "$COLUMN_RAW_TIMESTAMP >= ?",
+            arrayOf(twentyFourHoursAgo.toString()),
+            null,
+            null,
+            "$COLUMN_RAW_TIMESTAMP ASC"  // Oldest first for drawing path chronologically
+        )
+
+        if (cursor.moveToFirst()) {
+            do {
+                val id = cursor.getLong(cursor.getColumnIndexOrThrow(COLUMN_RAW_ID))
+                val latitude = cursor.getDouble(cursor.getColumnIndexOrThrow(COLUMN_RAW_LATITUDE))
+                val longitude = cursor.getDouble(cursor.getColumnIndexOrThrow(COLUMN_RAW_LONGITUDE))
+                val timestamp = cursor.getLong(cursor.getColumnIndexOrThrow(COLUMN_RAW_TIMESTAMP))
+                val accuracyIndex = cursor.getColumnIndexOrThrow(COLUMN_RAW_ACCURACY)
+                val accuracy = if (cursor.isNull(accuracyIndex)) null else cursor.getFloat(accuracyIndex)
+
+                locations.add(RawLocationData(id, latitude, longitude, timestamp, accuracy))
+            } while (cursor.moveToNext())
+        }
+
+        cursor.close()
+        return locations
     }
 }

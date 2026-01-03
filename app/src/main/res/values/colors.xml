@@ -19,4 +19,9 @@
     <color name="md_theme_on_surface_variant">#49454F</color>
     
     <color name="md_theme_outline">#79747E</color>
+
+    <!-- Trajectory Map Colors -->
+    <color name="trajectory_start">#2196F3</color> <!-- Blue for start -->
+    <color name="trajectory_end">#F44336</color> <!-- Red for end -->
+    <color name="trajectory_color">#6750A4</color> <!-- Default purple -->
 </resources>

@@ -27,4 +27,15 @@
     <string name="export_full">Full Export</string>
     <string name="pull_to_refresh">Pull to refresh</string>
     <string name="refreshing">Refreshing location…</string>
+
+    <!-- Map Activity -->
+    <string name="trajectory_map_title">24-Hour Trajectory</string>
+    <string name="view_trajectory_map">View 24-hour trajectory map</string>
+    <string name="loading_locations">Loading locations…</string>
+    <string name="no_trajectory_data">No trajectory data available</string>
+    <string name="no_trajectory_description">No location data found for the last 24 hours</string>
+    <string name="location_points_count">%d location points</string>
+    <string name="trajectory_time_range">From %s to %s</string>
+    <string name="start_marker">Start</string>
+    <string name="end_marker">End</string>
 </resources>

@@ -65,6 +65,7 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerView()
         setupExportButton()
         setupSwipeRefresh()
+        setupMapButton()
         checkPermissionsAndStart()
         updateGpsStatus()
     }
@@ -98,6 +99,13 @@ class MainActivity : AppCompatActivity() {
     private fun setupSwipeRefresh() {
         binding.swipeRefresh.setOnRefreshListener {
             requestActiveLocationUpdate()
+        }
+    }
+
+    private fun setupMapButton() {
+        binding.fabMap.setOnClickListener {
+            val intent = Intent(this, MapActivity::class.java)
+            startActivity(intent)
         }
     }
 
