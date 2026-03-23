@@ -124,8 +124,9 @@
               export JAVA_HOME="${pkgs.jdk17.home}"
               export GRADLE_USER_HOME="$mitmCache"
 
-              # Build only armeabi-v7a debug APK using Gradle with cached dependencies
-              gradle assembleDebug \
+              # Build only armeabi-v7a debug APK using project wrapper for version compatibility
+              chmod +x ./gradlew
+              ./gradlew assembleDebug \
                 -Pandroid.injected.abi=armeabi-v7a \
                 --offline \
                 --no-daemon \
