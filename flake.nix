@@ -37,6 +37,7 @@
         # Android SDK configuration
         androidSdk = android-nixpkgs.sdk.${system} (sdkPkgs: with sdkPkgs; [
           cmdline-tools-latest
+          build-tools-36-0-0
           build-tools-35-0-0
           platform-tools
           platforms-android-36
@@ -53,7 +54,7 @@
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
           export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/27.2.12479018"
           export JAVA_HOME="${pkgs.jdk17.home}"
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/35.0.0:$JAVA_HOME/bin:$PATH"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$JAVA_HOME/bin:$PATH"
 
           echo "Building ARM v7 debug APK..."
           echo "ANDROID_HOME: $ANDROID_HOME"
@@ -124,8 +125,9 @@
               export JAVA_HOME="${pkgs.jdk17.home}"
               export GRADLE_USER_HOME="$mitmCache"
 
-              # Build only armeabi-v7a debug APK using Gradle with cached dependencies
-              gradle assembleDebug \
+              # Build only armeabi-v7a debug APK using project wrapper for version compatibility
+              chmod +x ./gradlew
+              ./gradlew assembleDebug \
                 -Pandroid.injected.abi=armeabi-v7a \
                 --offline \
                 --no-daemon \
@@ -166,7 +168,7 @@
             export ANDROID_SDK_ROOT="$ANDROID_HOME"
             export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/27.2.12479018"
             export JAVA_HOME="${pkgs.jdk17.home}"
-            export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/35.0.0:$JAVA_HOME/bin:$PATH"
+            export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/36.0.0:$JAVA_HOME/bin:$PATH"
 
             echo "╔══════════════════════════════════════════════════════════════╗"
             echo "║  LocationTracker - Hermetic Android Build Environment       ║"
